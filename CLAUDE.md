@@ -101,14 +101,14 @@ router.replace(ROUTES.AUTH);
 
 ## Back4App Configuration
 
-**App ID:** `xHhtaTYwaOrHrmFlFIywZTxuZkbuUezdRE4GzTgS`
-**Master Key:** `V3RpGQiJT2XSEvNy0TD8vgNVmcOM5wF8cbtVg1I1`
-**JavaScript Key:** `IYmmK2aBeoaU6ToB9iz0SZ84Z1Fg728uD35bPjnv`
+**App ID:** `FCUqIKx4ZaZxK0ZhFtYkYg60iSWwJFc5KQvWbftk`
+**Master Key:** `hSR6KjbtsZel5Lkn5GACpZ1RmPe3wbClUQXVHx91`
+**JavaScript Key:** `lfwVvVco2YMoYp2NVO9p7qNzevooey5aGnZiXB7z`
 
 ### Deploy Cloud Code via MCP
 ```
 mcp__back4app__deploy_cloud_code_files
-  applicationId: xHhtaTYwaOrHrmFlFIywZTxuZkbuUezdRE4GzTgS
+  applicationId: FCUqIKx4ZaZxK0ZhFtYkYg60iSWwJFc5KQvWbftk
   files: [{"path": "cloud/main.js", "localPath": "/Users/mukesh/Code/cotton/cloud/main.js"}]
 ```
 

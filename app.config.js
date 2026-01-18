@@ -55,10 +55,10 @@ module.exports = {
       // Back4App Parse Server configuration
       EXPO_PUBLIC_PARSE_APP_ID:
         process.env.EXPO_PUBLIC_PARSE_APP_ID ||
-        "xHhtaTYwaOrHrmFlFIywZTxuZkbuUezdRE4GzTgS",
+        "FCUqIKx4ZaZxK0ZhFtYkYg60iSWwJFc5KQvWbftk",
       EXPO_PUBLIC_PARSE_JS_KEY:
         process.env.EXPO_PUBLIC_PARSE_JS_KEY ||
-        "IYmmK2aBeoaU6ToB9iz0SZ84Z1Fg728uD35bPjnv",
+        "lfwVvVco2YMoYp2NVO9p7qNzevooey5aGnZiXB7z",
       EXPO_PUBLIC_PARSE_SERVER_URL:
         process.env.EXPO_PUBLIC_PARSE_SERVER_URL ||
         "https://parseapi.back4app.com",
