@@ -2,6 +2,8 @@ import { useCallback, useRef, useState } from "react";
 import { Dimensions, View, Text } from "react-native";
 import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import {
   PhoneInputScreen,
   OTPVerifyScreen,
@@ -27,6 +29,12 @@ export default function AuthScreen() {
   const [currentStep, setCurrentStep] = useState<AuthStep>("phone");
   const [phoneData, setPhoneData] = useState<PhoneData | null>(null);
   const screenHeight = Dimensions.get("window").height;
+
+  // Use keyboard animation to add padding when keyboard is visible
+  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
+  const animatedStyle = useAnimatedStyle(() => ({
+    paddingBottom: Math.abs(keyboardHeight.value),
+  }));
 
   const availableTopSpace = screenHeight - bottomSheetHeight;
 
@@ -92,7 +100,7 @@ export default function AuthScreen() {
             setBottomSheetHeight(height);
           }}
         >
-          <View className="p-6 pb-12">
+          <Animated.View className="p-6 pb-12" style={animatedStyle}>
             {currentStep === "phone" && (
               <PhoneInputScreen onContinue={handlePhoneContinue} />
             )}
@@ -116,7 +124,7 @@ export default function AuthScreen() {
                 onComplete={handleNameComplete}
               />
             )}
-          </View>
+          </Animated.View>
         </BottomSheetView>
       </BottomSheet>
     </View>
