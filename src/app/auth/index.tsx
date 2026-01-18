@@ -1,188 +1,124 @@
-import { useState } from "react";
-import { View, KeyboardAvoidingView, Platform } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useCallback, useRef, useState } from "react";
+import { Dimensions, View, Text } from "react-native";
+import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 import {
   PhoneInputScreen,
   OTPVerifyScreen,
   NameEntryScreen,
 } from "@/components/auth";
-import { AuthService } from "@/services";
+import { ROUTES } from "@/constants";
 import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/hooks/useToast";
-import { ROUTES, Country } from "@/constants";
+import { IUser } from "@/types";
 
 type AuthStep = "phone" | "otp" | "name";
 
-interface AuthState {
-  countryCode: string;
+interface PhoneData {
+  countryDialCode: string;
   phoneNumber: string;
-  country: Country | null;
   countryIsoCode: string;
 }
 
 export default function AuthScreen() {
   const router = useRouter();
   const { setUser } = useAuth();
-  const { showSuccess, showError } = useToast();
+  const bottomSheetRef = useRef<BottomSheet>(null);
+  const [bottomSheetHeight, setBottomSheetHeight] = useState(400);
+  const [currentStep, setCurrentStep] = useState<AuthStep>("phone");
+  const [phoneData, setPhoneData] = useState<PhoneData | null>(null);
+  const screenHeight = Dimensions.get("window").height;
 
-  const [step, setStep] = useState<AuthStep>("phone");
-  const [isLoading, setIsLoading] = useState(false);
-  const [authState, setAuthState] = useState<AuthState>({
-    countryCode: "",
-    phoneNumber: "",
-    country: null,
-    countryIsoCode: "",
-  });
+  const availableTopSpace = screenHeight - bottomSheetHeight;
 
-  const handlePhoneSubmit = async (
-    countryCode: string,
-    phoneNumber: string,
-    country: Country
-  ) => {
-    setIsLoading(true);
-    try {
-      const result = await AuthService.requestOTP(countryCode, phoneNumber);
-      if (result.success) {
-        setAuthState({
-          countryCode,
-          phoneNumber,
-          country,
-          countryIsoCode: country.code,
-        });
-        setStep("otp");
-        showSuccess("OTP sent successfully");
-      } else {
-        showError(result.error.message);
-      }
-    } catch (error) {
-      showError("Failed to send OTP. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const handlePhoneContinue = useCallback(
+    (countryDialCode: string, phoneNumber: string, countryIsoCode: string) => {
+      setPhoneData({ countryDialCode, phoneNumber, countryIsoCode });
+      setCurrentStep("otp");
+    },
+    []
+  );
 
-  const handleOTPVerify = async (otp: string) => {
-    setIsLoading(true);
-    try {
-      const result = await AuthService.verifyOTP(
-        authState.countryCode,
-        authState.phoneNumber,
-        otp,
-        authState.countryIsoCode
-      );
+  const handleExistingUserVerified = useCallback(
+    (user: IUser) => {
+      setUser(user);
+      router.replace(ROUTES.HOME);
+    },
+    [setUser, router]
+  );
 
-      if (result.success) {
-        if (result.data.isNewUser) {
-          // New user - need to collect name
-          setStep("name");
-        } else if (result.data.user) {
-          // Existing user - logged in
-          setUser(result.data.user);
-          showSuccess("Welcome back!");
-          router.replace(ROUTES.HOME);
-        }
-      } else {
-        showError(result.error.message);
-      }
-    } catch (error) {
-      showError("Failed to verify OTP. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const handleNewUserVerified = useCallback(() => {
+    setCurrentStep("name");
+  }, []);
 
-  const handleResendOTP = async () => {
-    setIsLoading(true);
-    try {
-      const result = await AuthService.requestOTP(
-        authState.countryCode,
-        authState.phoneNumber
-      );
-      if (result.success) {
-        showSuccess("OTP sent again");
-      } else {
-        showError(result.error.message);
-      }
-    } catch (error) {
-      showError("Failed to resend OTP. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const handleNameComplete = useCallback(
+    (user: IUser) => {
+      setUser(user);
+      router.replace(ROUTES.HOME);
+    },
+    [setUser, router]
+  );
 
-  const handleNameSubmit = async (fullName: string) => {
-    setIsLoading(true);
-    try {
-      const result = await AuthService.createUser(
-        authState.countryCode,
-        authState.phoneNumber,
-        authState.countryIsoCode,
-        fullName
-      );
-
-      if (result.success) {
-        setUser(result.data.user);
-        showSuccess("Account created successfully!");
-        router.replace(ROUTES.HOME);
-      } else {
-        showError(result.error.message);
-      }
-    } catch (error) {
-      showError("Failed to create account. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleBackToPhone = () => {
-    setStep("phone");
-    setAuthState({
-      countryCode: "",
-      phoneNumber: "",
-      country: null,
-      countryIsoCode: "",
-    });
-  };
-
-  const handleBackToOTP = () => {
-    setStep("otp");
-  };
+  const handleBackToPhone = useCallback(() => {
+    setCurrentStep("phone");
+    setPhoneData(null);
+  }, []);
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
+    <View className="flex-1 bg-primary">
+      {/* Top section with primary color */}
+      <View
+        className="items-center justify-center bg-primary px-6"
+        style={{ height: availableTopSpace }}
       >
-        <View className="flex-1 justify-center p-6">
-          {step === "phone" && (
-            <PhoneInputScreen
-              onSubmit={handlePhoneSubmit}
-              isLoading={isLoading}
-            />
-          )}
-
-          {step === "otp" && authState.country && (
-            <OTPVerifyScreen
-              phoneNumber={authState.phoneNumber}
-              country={authState.country}
-              onVerify={handleOTPVerify}
-              onBack={handleBackToPhone}
-              onResend={handleResendOTP}
-              isLoading={isLoading}
-            />
-          )}
-
-          {step === "name" && (
-            <NameEntryScreen
-              onSubmit={handleNameSubmit}
-              onBack={handleBackToOTP}
-              isLoading={isLoading}
-            />
-          )}
+        <View className="items-center">
+          <Text className="text-white text-4xl font-bold">Cotton</Text>
         </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      </View>
+
+      {/* Bottom sheet with auth forms */}
+      <BottomSheet
+        ref={bottomSheetRef}
+        index={0}
+        enableDynamicSizing={true}
+        enablePanDownToClose={false}
+        handleComponent={() => null}
+        keyboardBehavior="extend"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
+      >
+        <BottomSheetView
+          onLayout={(event) => {
+            const { height } = event.nativeEvent.layout;
+            setBottomSheetHeight(height);
+          }}
+        >
+          <View className="p-6 pb-12">
+            {currentStep === "phone" && (
+              <PhoneInputScreen onContinue={handlePhoneContinue} />
+            )}
+
+            {currentStep === "otp" && phoneData && (
+              <OTPVerifyScreen
+                countryDialCode={phoneData.countryDialCode}
+                phoneNumber={phoneData.phoneNumber}
+                countryIsoCode={phoneData.countryIsoCode}
+                onBack={handleBackToPhone}
+                onExistingUserVerified={handleExistingUserVerified}
+                onNewUserVerified={handleNewUserVerified}
+              />
+            )}
+
+            {currentStep === "name" && phoneData && (
+              <NameEntryScreen
+                countryDialCode={phoneData.countryDialCode}
+                phoneNumber={phoneData.phoneNumber}
+                countryIsoCode={phoneData.countryIsoCode}
+                onComplete={handleNameComplete}
+              />
+            )}
+          </View>
+        </BottomSheetView>
+      </BottomSheet>
+    </View>
   );
 }

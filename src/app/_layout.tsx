@@ -4,7 +4,6 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { Provider } from "jotai";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import "react-native-reanimated";
 import "../../global.css";
@@ -56,9 +55,7 @@ export default function RootLayout() {
       <Provider>
         <SafeAreaProvider>
           <GestureHandlerRootView style={{ flex: 1 }}>
-            <KeyboardProvider>
-              <RootLayoutInner />
-            </KeyboardProvider>
+            <RootLayoutInner />
           </GestureHandlerRootView>
         </SafeAreaProvider>
       </Provider>

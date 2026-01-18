@@ -1,131 +1,295 @@
 import { useState, useRef, useEffect } from "react";
-import { View, Text, TextInput, Pressable } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  ActivityIndicator,
+  StyleSheet,
+  Keyboard,
+  TouchableWithoutFeedback,
+} from "react-native";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { Button } from "@/components/ui/Button";
-import { COLORS, Country } from "@/constants";
-
-interface OTPVerifyScreenProps {
-  phoneNumber: string;
-  country: Country;
-  onVerify: (otp: string) => void;
-  onBack: () => void;
-  onResend: () => void;
-  isLoading: boolean;
-}
+import { COLORS } from "@/constants/colors";
+import { useToast } from "@/hooks/useToast";
+import { AuthService } from "@/services/auth.service";
+import { IUser } from "@/types";
 
 const OTP_LENGTH = 4;
 
-export function OTPVerifyScreen({
-  phoneNumber,
-  country,
-  onVerify,
-  onBack,
-  onResend,
-  isLoading,
-}: OTPVerifyScreenProps) {
-  const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
-  const inputRefs = useRef<(TextInput | null)[]>([]);
+interface OTPVerifyScreenProps {
+  countryDialCode: string;
+  phoneNumber: string;
+  countryIsoCode: string;
+  onBack: () => void;
+  onExistingUserVerified: (user: IUser) => void;
+  onNewUserVerified: () => void;
+}
 
+export function OTPVerifyScreen({
+  countryDialCode,
+  phoneNumber,
+  countryIsoCode,
+  onBack,
+  onExistingUserVerified,
+  onNewUserVerified,
+}: OTPVerifyScreenProps) {
+  const { showError } = useToast();
+  const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
+  const [isLoading, setIsLoading] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const inputRefs = useRef<(TextInput | null)[]>([]);
+  const hiddenInputRef = useRef<TextInput | null>(null);
+
+  // Focus hidden input on mount
   useEffect(() => {
-    // Focus first input on mount
-    inputRefs.current[0]?.focus();
+    setTimeout(() => {
+      hiddenInputRef.current?.focus();
+    }, 100);
   }, []);
 
-  const handleChange = (value: string, index: number) => {
-    // Only allow digits
-    const digit = value.replace(/\D/g, "").slice(-1);
+  // Handle OTP from hidden input (paste/autofill)
+  const handleHiddenInput = (text: string) => {
+    const digits = text.replace(/\D/g, "").slice(0, OTP_LENGTH);
 
-    const newOtp = [...otp];
-    newOtp[index] = digit;
-    setOtp(newOtp);
-
-    // Auto-advance to next input
-    if (digit && index < OTP_LENGTH - 1) {
-      inputRefs.current[index + 1]?.focus();
+    if (!digits) {
+      setOtp(Array(OTP_LENGTH).fill(""));
+      setFocusedIndex(0);
+      return;
     }
 
-    // Auto-submit when all digits entered
-    if (digit && index === OTP_LENGTH - 1) {
-      const fullOtp = newOtp.join("");
-      if (fullOtp.length === OTP_LENGTH) {
-        onVerify(fullOtp);
+    // Distribute digits to all cells
+    const newOtp = Array(OTP_LENGTH).fill("");
+    digits.split("").forEach((d, i) => {
+      if (i < OTP_LENGTH) {
+        newOtp[i] = d;
+      }
+    });
+
+    setOtp(newOtp);
+    setFocusedIndex(Math.min(digits.length - 1, OTP_LENGTH - 1));
+
+    // Clear hidden input after processing
+    hiddenInputRef.current?.setNativeProps({ text: "" });
+  };
+
+  // Handle input from visible cells
+  const handleCellInput = (index: number, text: string) => {
+    const digits = text.replace(/\D/g, "");
+
+    // If multiple digits (paste), redirect to hidden input handler
+    if (digits.length > 1) {
+      handleHiddenInput(digits);
+      return;
+    }
+
+    // Single digit input
+    if (digits.length === 1) {
+      const newOtp = [...otp];
+      newOtp[index] = digits;
+      setOtp(newOtp);
+
+      // Auto-focus next field
+      if (index < OTP_LENGTH - 1) {
+        setFocusedIndex(index + 1);
+        inputRefs.current[index + 1]?.focus();
       }
     }
   };
 
-  const handleKeyPress = (e: { nativeEvent: { key: string } }, index: number) => {
-    if (e.nativeEvent.key === "Backspace" && !otp[index] && index > 0) {
+  const handleKeyPress = (index: number, key: string) => {
+    if (key !== "Backspace") return;
+
+    if (otp[index]) {
+      // Clear current field
+      const newOtp = [...otp];
+      newOtp[index] = "";
+      setOtp(newOtp);
+    } else if (index > 0) {
+      // Move to previous and clear it
+      const newOtp = [...otp];
+      newOtp[index - 1] = "";
+      setOtp(newOtp);
+      setFocusedIndex(index - 1);
       inputRefs.current[index - 1]?.focus();
     }
   };
 
-  const handleSubmit = () => {
-    const fullOtp = otp.join("");
-    if (fullOtp.length === OTP_LENGTH) {
-      onVerify(fullOtp);
+  const handleCellFocus = (index: number) => {
+    setFocusedIndex(index);
+  };
+
+  const handleVerify = async () => {
+    const otpCode = otp.join("");
+    if (otpCode.length !== OTP_LENGTH) {
+      showError("Please enter the complete code");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await AuthService.verifyOTP(
+        countryDialCode,
+        phoneNumber,
+        otpCode,
+        countryIsoCode
+      );
+
+      if (result.success) {
+        if (result.data.isNewUser) {
+          onNewUserVerified();
+        } else if (result.data.user) {
+          onExistingUserVerified(result.data.user);
+        }
+      } else {
+        showError(result.error.message);
+        // Clear OTP on error
+        setOtp(Array(OTP_LENGTH).fill(""));
+        setFocusedIndex(0);
+        hiddenInputRef.current?.focus();
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const isComplete = otp.every((digit) => digit !== "");
-  const formattedPhone = `${country.dialingCode} ${phoneNumber}`;
+  const handleResend = async () => {
+    setIsResending(true);
+    try {
+      const result = await AuthService.requestOTP(countryDialCode, phoneNumber);
+      if (!result.success) {
+        showError(result.error.message);
+      }
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  const isComplete = otp.every((d) => d !== "");
+  const displayPhone = `${countryDialCode} ${phoneNumber}`;
+
+  const dismissKeyboard = () => {
+    Keyboard.dismiss();
+  };
 
   return (
-    <View className="flex-1">
-      <Pressable
-        onPress={onBack}
-        className="flex-row items-center mb-6"
-      >
-        <Lucide name="arrow-left" size={24} color={COLORS.gray700} />
-        <Text className="text-gray-700 ml-2 text-base">Back</Text>
-      </Pressable>
-
-      <Text className="text-3xl font-bold text-center text-gray-900 mb-2">
-        Verify Phone
-      </Text>
-      <Text className="text-gray-500 text-center mb-2">
-        Enter the 4-digit code sent to
-      </Text>
-      <Text className="text-gray-900 text-center font-medium mb-8">
-        {formattedPhone}
-      </Text>
-
-      <View className="flex-row justify-center gap-3 mb-8">
-        {Array.from({ length: OTP_LENGTH }).map((_, index) => (
-          <TextInput
-            key={index}
-            ref={(ref) => { inputRefs.current[index] = ref; }}
-            className={`w-14 h-14 border-2 rounded-xl text-center text-2xl font-bold ${
-              otp[index]
-                ? "border-primary bg-primary/5"
-                : "border-gray-300 bg-white"
-            }`}
-            value={otp[index]}
-            onChangeText={(value) => handleChange(value, index)}
-            onKeyPress={(e) => handleKeyPress(e, index)}
-            keyboardType="number-pad"
-            maxLength={1}
-            selectTextOnFocus
-          />
-        ))}
-      </View>
-
-      <Button
-        title="Verify"
-        variant="primary"
-        onPress={handleSubmit}
-        disabled={!isComplete || isLoading}
-      />
-
-      <View className="flex-row justify-center items-center mt-6">
-        <Text className="text-gray-500">Didn't receive the code? </Text>
-        <Pressable onPress={onResend} disabled={isLoading}>
-          <Text className="text-primary font-medium">Resend</Text>
+    <TouchableWithoutFeedback onPress={dismissKeyboard}>
+      <View>
+        {/* Back Button */}
+        <Pressable
+          onPress={onBack}
+          className="flex-row items-center -ml-2 mb-4"
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          testID="otp-back-button"
+        >
+          <Lucide name="chevron-left" size={24} color={COLORS.gray600} />
+          <Text className="text-gray-600 text-base">Back</Text>
         </Pressable>
-      </View>
 
-      <Text className="text-gray-400 text-center text-xs mt-4">
-        For testing, use code: 1234
-      </Text>
-    </View>
+        {/* Title */}
+        <Text className="text-2xl font-bold text-gray-900 mb-2">
+          Enter verification code
+        </Text>
+        <Text className="text-base text-gray-500 mb-8">
+          Code sent to {displayPhone}
+        </Text>
+
+        {/* Hidden input for paste/autofill */}
+        <TextInput
+          ref={hiddenInputRef}
+          style={styles.hiddenInput}
+          onChangeText={handleHiddenInput}
+          keyboardType="number-pad"
+          maxLength={OTP_LENGTH}
+          textContentType="oneTimeCode"
+          caretHidden
+          testID="otp-hidden-input"
+        />
+
+        {/* Visible OTP cells */}
+        <View className="flex-row justify-center gap-3 mb-6">
+          {otp.map((digit, index) => (
+            <TextInput
+              key={index}
+              ref={(ref) => {
+                inputRefs.current[index] = ref;
+              }}
+              value={digit}
+              onChangeText={(text) => handleCellInput(index, text)}
+              onKeyPress={({ nativeEvent }) =>
+                handleKeyPress(index, nativeEvent.key)
+              }
+              onFocus={() => handleCellFocus(index)}
+              keyboardType="number-pad"
+              maxLength={OTP_LENGTH}
+              selectTextOnFocus
+              style={{
+                width: 64,
+                height: 64,
+                textAlign: "center",
+                fontSize: 24,
+                fontWeight: "bold",
+                borderRadius: 12,
+                borderWidth: 2,
+                borderColor: digit
+                  ? COLORS.primary
+                  : focusedIndex === index
+                  ? COLORS.primary
+                  : COLORS.gray200,
+                backgroundColor: digit ? `${COLORS.primary}10` : COLORS.gray50,
+                color: COLORS.gray900,
+              }}
+              editable={!isLoading}
+              testID={`otp-input-${index}`}
+            />
+          ))}
+        </View>
+
+        {/* Verify Button */}
+        <Pressable
+          onPress={handleVerify}
+          disabled={!isComplete || isLoading}
+          className={`rounded-xl py-4 items-center justify-center ${
+            isComplete && !isLoading
+              ? "bg-primary active:bg-primary/90"
+              : "bg-gray-300"
+          }`}
+          testID="otp-verify-button"
+        >
+          {isLoading ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text className="text-white text-base font-semibold">Verify</Text>
+          )}
+        </Pressable>
+
+        {/* Resend Link */}
+        <View className="flex-row justify-center mt-6">
+          <Text className="text-gray-500">Didn't receive the code? </Text>
+          <Pressable onPress={handleResend} disabled={isResending || isLoading}>
+            <Text
+              className={`font-semibold ${
+                isResending || isLoading ? "text-gray-400" : "text-primary"
+              }`}
+            >
+              {isResending ? "Sending..." : "Resend"}
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Extra spacing for keyboard */}
+        <View className="h-8" />
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
+
+const styles = StyleSheet.create({
+  hiddenInput: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    opacity: 0,
+  },
+});

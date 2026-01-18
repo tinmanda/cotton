@@ -1,67 +1,104 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable } from "react-native";
-import { Lucide } from "@react-native-vector-icons/lucide";
-import { Button } from "@/components/ui/Button";
-import { COLORS } from "@/constants";
+import {
+  ActivityIndicator,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { COLORS } from "@/constants/colors";
+import { useToast } from "@/hooks/useToast";
+import { AuthService } from "@/services/auth.service";
+import { IUser } from "@/types";
 
 interface NameEntryScreenProps {
-  onSubmit: (fullName: string) => void;
-  onBack: () => void;
-  isLoading: boolean;
+  countryDialCode: string;
+  phoneNumber: string;
+  countryIsoCode: string;
+  onComplete: (user: IUser) => void;
 }
 
 export function NameEntryScreen({
-  onSubmit,
-  onBack,
-  isLoading,
+  countryDialCode,
+  phoneNumber,
+  countryIsoCode,
+  onComplete,
 }: NameEntryScreenProps) {
-  const [fullName, setFullName] = useState("");
+  const { showError } = useToast();
+  const [name, setName] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = () => {
-    const trimmedName = fullName.trim();
-    if (trimmedName.length >= 2) {
-      onSubmit(trimmedName);
+  const handleContinue = async () => {
+    const trimmedName = name.trim();
+    if (trimmedName.length < 2) {
+      showError("Please enter your name");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await AuthService.createUser(
+        countryDialCode,
+        phoneNumber,
+        countryIsoCode,
+        trimmedName
+      );
+
+      if (result.success) {
+        onComplete(result.data.user);
+      } else {
+        showError(result.error.message);
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const isValidName = fullName.trim().length >= 2;
+  const isValid = name.trim().length >= 2;
 
   return (
-    <View className="flex-1">
-      <Pressable
-        onPress={onBack}
-        className="flex-row items-center mb-6"
-      >
-        <Lucide name="arrow-left" size={24} color={COLORS.gray700} />
-        <Text className="text-gray-700 ml-2 text-base">Back</Text>
-      </Pressable>
-
-      <Text className="text-3xl font-bold text-center text-gray-900 mb-2">
+    <View>
+      {/* Title */}
+      <Text className="text-2xl font-bold text-gray-900 mb-2">
         What's your name?
       </Text>
-      <Text className="text-gray-500 text-center mb-8">
-        Let us know what to call you
+      <Text className="text-base text-gray-500 mb-8">
+        This is how you'll appear to others
       </Text>
 
-      <View className="mb-6">
-        <Text className="text-gray-700 mb-2 font-medium">Full Name</Text>
+      {/* Name Input */}
+      <View className="bg-gray-100 rounded-xl px-4 py-4 mb-6">
         <TextInput
-          className="border border-gray-300 rounded-lg px-4 py-4 text-base"
-          placeholder="Enter your full name"
-          value={fullName}
-          onChangeText={setFullName}
-          autoCapitalize="words"
-          autoCorrect={false}
+          value={name}
+          onChangeText={setName}
+          placeholder="Enter your name"
+          placeholderTextColor={COLORS.gray400}
           autoFocus
+          autoCapitalize="words"
+          autoComplete="name"
+          style={{ fontSize: 16, color: COLORS.gray900 }}
+          editable={!isLoading}
+          testID="name-input"
         />
       </View>
 
-      <Button
-        title="Create Account"
-        variant="primary"
-        onPress={handleSubmit}
-        disabled={!isValidName || isLoading}
-      />
+      {/* Continue Button */}
+      <Pressable
+        onPress={handleContinue}
+        disabled={!isValid || isLoading}
+        className={`rounded-xl py-4 mb-14 items-center justify-center ${
+          isValid && !isLoading
+            ? "bg-primary active:bg-primary/90"
+            : "bg-gray-300"
+        }`}
+        testID="name-continue-button"
+      >
+        {isLoading ? (
+          <ActivityIndicator color="white" />
+        ) : (
+          <Text className="text-white text-base font-semibold">Continue</Text>
+        )}
+      </Pressable>
     </View>
   );
 }

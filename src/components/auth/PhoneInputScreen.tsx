@@ -1,158 +1,154 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  View,
+  ActivityIndicator,
+  Pressable,
   Text,
   TextInput,
-  Pressable,
-  ScrollView,
-  Modal,
+  View,
 } from "react-native";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { Button } from "@/components/ui/Button";
-import { COLORS, COUNTRIES, Country, DEFAULT_COUNTRY } from "@/constants";
+import { getLocales } from "expo-localization";
+import { COLORS } from "@/constants/colors";
+import {
+  CountryData,
+  DEFAULT_COUNTRY,
+  getCountryByCode,
+} from "@/constants/countries";
+import { useToast } from "@/hooks/useToast";
+import { AuthService } from "@/services/auth.service";
+import { CountryPickerModal } from "./CountryPickerModal";
 
 interface PhoneInputScreenProps {
-  onSubmit: (countryCode: string, phoneNumber: string, country: Country) => void;
-  isLoading: boolean;
+  onContinue: (
+    countryDialCode: string,
+    phoneNumber: string,
+    countryIsoCode: string
+  ) => void;
 }
 
-export function PhoneInputScreen({
-  onSubmit,
-  isLoading,
-}: PhoneInputScreenProps) {
-  const [selectedCountry, setSelectedCountry] = useState<Country>(DEFAULT_COUNTRY);
+export function PhoneInputScreen({ onContinue }: PhoneInputScreenProps) {
+  const { showError } = useToast();
+  const [selectedCountry, setSelectedCountry] =
+    useState<CountryData>(DEFAULT_COUNTRY);
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
 
-  const filteredCountries = COUNTRIES.filter(
-    (country) =>
-      country.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      country.dialingCode.includes(searchQuery) ||
-      country.code.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Auto-detect country from device locale on mount
+  useEffect(() => {
+    try {
+      const locales = getLocales();
+      if (locales.length > 0 && locales[0].regionCode) {
+        const detectedCountry = getCountryByCode(locales[0].regionCode);
+        if (detectedCountry) {
+          setSelectedCountry(detectedCountry);
+        }
+      }
+    } catch {
+      // Fallback to default country
+    }
+  }, []);
 
-  const handleSubmit = () => {
-    const cleanPhone = phoneNumber.replace(/\D/g, "");
-    if (cleanPhone.length >= 6) {
-      onSubmit(selectedCountry.dialingCode, cleanPhone, selectedCountry);
+  const handleContinue = async () => {
+    // Basic validation
+    const cleanNumber = phoneNumber.replace(/[^\d]/g, "");
+    if (cleanNumber.length < 6) {
+      showError("Please enter a valid phone number");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await AuthService.requestOTP(
+        selectedCountry.dialCode,
+        cleanNumber
+      );
+
+      if (result.success) {
+        onContinue(selectedCountry.dialCode, cleanNumber, selectedCountry.code);
+      } else {
+        showError(result.error.message);
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const selectCountry = (country: Country) => {
-    setSelectedCountry(country);
-    setShowCountryPicker(false);
-    setSearchQuery("");
-  };
-
-  const isValidPhone = phoneNumber.replace(/\D/g, "").length >= 6;
+  const isValid = phoneNumber.replace(/[^\d]/g, "").length >= 6;
 
   return (
-    <View className="flex-1">
-      <Text className="text-3xl font-bold text-center text-gray-900 mb-2">
-        Cotton
+    <View>
+      {/* Title */}
+      <Text className="text-2xl font-bold text-gray-900 mb-2">
+        Enter your phone number
       </Text>
-      <Text className="text-gray-500 text-center mb-8">
-        Enter your phone number to continue
+      <Text className="text-base text-gray-500 mb-8">
+        We'll send you a verification code
       </Text>
 
-      <View className="mb-6">
-        <Text className="text-gray-700 mb-2 font-medium">Phone Number</Text>
-        <View className="flex-row">
-          <Pressable
-            onPress={() => setShowCountryPicker(true)}
-            className="flex-row items-center border border-gray-300 rounded-l-lg px-3 py-4 bg-gray-50"
-          >
-            <Text className="text-xl mr-1">{selectedCountry.flag}</Text>
-            <Text className="text-base text-gray-900">
-              {selectedCountry.dialingCode}
-            </Text>
-            <Lucide
-              name="chevron-down"
-              size={16}
-              color={COLORS.gray500}
-              style={{ marginLeft: 4 }}
-            />
-          </Pressable>
+      {/* Phone Input Row */}
+      <View className="flex-row items-center gap-3">
+        {/* Country Picker Button */}
+        <Pressable
+          onPress={() => setShowCountryPicker(true)}
+          className="flex-row items-center bg-gray-100 rounded-xl px-4 h-14 active:bg-gray-200"
+        >
+          <Text className="text-xl mr-2">{selectedCountry.flag}</Text>
+          <Text className="text-base font-medium text-gray-900">
+            {selectedCountry.dialCode}
+          </Text>
+          <Lucide
+            name="chevron-down"
+            size={18}
+            color={COLORS.gray500}
+            style={{ marginLeft: 4 }}
+          />
+        </Pressable>
+
+        {/* Phone Number Input */}
+        <View className="flex-1 bg-gray-100 rounded-xl px-4 justify-center h-14">
           <TextInput
-            className="flex-1 border border-l-0 border-gray-300 rounded-r-lg px-4 py-4 text-base"
-            placeholder="Phone number"
             value={phoneNumber}
             onChangeText={setPhoneNumber}
+            placeholder="Phone number"
+            placeholderTextColor={COLORS.gray400}
             keyboardType="phone-pad"
             autoFocus
+            style={{ fontSize: 16, color: COLORS.gray900 }}
+            editable={!isLoading}
+            testID="phone-input"
           />
         </View>
       </View>
 
-      <Button
-        title="Continue"
-        variant="primary"
-        onPress={handleSubmit}
-        disabled={!isValidPhone || isLoading}
-      />
+      {/* Continue Button */}
+      <Pressable
+        onPress={handleContinue}
+        disabled={!isValid || isLoading}
+        className={`mt-6 rounded-xl py-4 items-center justify-center ${
+          isValid && !isLoading ? "bg-primary active:bg-primary/90" : "bg-gray-300"
+        }`}
+        testID="phone-continue-button"
+      >
+        {isLoading ? (
+          <ActivityIndicator color="white" />
+        ) : (
+          <Text className="text-white text-base font-semibold">Continue</Text>
+        )}
+      </Pressable>
 
-      <Text className="text-gray-400 text-center text-sm mt-4">
-        We'll send you a verification code
+      {/* Terms */}
+      <Text className="text-center text-sm text-gray-400 mt-6 px-4 pb-16">
+        By continuing, you agree to our Terms of Service and Privacy Policy
       </Text>
 
-      <Modal
+      {/* Country Picker Modal */}
+      <CountryPickerModal
         visible={showCountryPicker}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <View className="flex-1 bg-white pt-4">
-          <View className="flex-row items-center justify-between px-4 pb-4 border-b border-gray-200">
-            <Text className="text-xl font-bold">Select Country</Text>
-            <Pressable
-              onPress={() => {
-                setShowCountryPicker(false);
-                setSearchQuery("");
-              }}
-              className="p-2"
-            >
-              <Lucide name="x" size={24} color={COLORS.gray700} />
-            </Pressable>
-          </View>
-
-          <View className="px-4 py-3">
-            <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
-              <Lucide name="search" size={20} color={COLORS.gray400} />
-              <TextInput
-                className="flex-1 ml-2 text-base"
-                placeholder="Search countries..."
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                autoCapitalize="none"
-              />
-            </View>
-          </View>
-
-          <ScrollView className="flex-1">
-            {filteredCountries.map((country) => (
-              <Pressable
-                key={country.code}
-                onPress={() => selectCountry(country)}
-                className="flex-row items-center px-4 py-3 border-b border-gray-100 active:bg-gray-50"
-              >
-                <Text className="text-2xl mr-3">{country.flag}</Text>
-                <View className="flex-1">
-                  <Text className="text-base text-gray-900">{country.name}</Text>
-                </View>
-                <Text className="text-gray-500">{country.dialingCode}</Text>
-                {country.code === selectedCountry.code && (
-                  <Lucide
-                    name="check"
-                    size={20}
-                    color={COLORS.primary}
-                    style={{ marginLeft: 8 }}
-                  />
-                )}
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-      </Modal>
+        onClose={() => setShowCountryPicker(false)}
+        onSelect={setSelectedCountry}
+        selectedCountry={selectedCountry}
+      />
     </View>
   );
 }
