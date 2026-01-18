@@ -1,0 +1,64 @@
+const packageJson = require("./package.json");
+
+module.exports = {
+  expo: {
+    name: "Cotton",
+    slug: "cotton",
+    version: packageJson.version,
+    orientation: "portrait",
+    icon: "./assets/images/icon.png",
+    scheme: "cotton",
+    userInterfaceStyle: "automatic",
+    newArchEnabled: true,
+    ios: {
+      supportsTablet: true,
+      bundleIdentifier: "com.yourcompany.cotton",
+      infoPlist: {
+        ITSAppUsesNonExemptEncryption: false,
+      },
+    },
+    android: {
+      package: "com.yourcompany.cotton",
+      adaptiveIcon: {
+        foregroundImage: "./assets/images/adaptive-icon.png",
+        backgroundColor: "#3b82f6",
+      },
+    },
+    platforms: ["ios", "android"],
+    web: {
+      output: "static",
+      favicon: "./assets/images/favicon.png",
+    },
+    plugins: [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          image: "./assets/images/splash-icon.png",
+          imageWidth: 200,
+          resizeMode: "contain",
+          backgroundColor: "#3b82f6",
+        },
+      ],
+      "expo-web-browser",
+    ],
+    experiments: {
+      typedRoutes: true,
+      reactCompiler: true,
+    },
+    extra: {
+      // Back4App Parse Server configuration
+      EXPO_PUBLIC_PARSE_APP_ID:
+        process.env.EXPO_PUBLIC_PARSE_APP_ID ||
+        "xHhtaTYwaOrHrmFlFIywZTxuZkbuUezdRE4GzTgS",
+      EXPO_PUBLIC_PARSE_JS_KEY:
+        process.env.EXPO_PUBLIC_PARSE_JS_KEY ||
+        "IYmmK2aBeoaU6ToB9iz0SZ84Z1Fg728uD35bPjnv",
+      EXPO_PUBLIC_PARSE_SERVER_URL:
+        process.env.EXPO_PUBLIC_PARSE_SERVER_URL ||
+        "https://parseapi.back4app.com",
+      EXPO_PUBLIC_ENV: process.env.EXPO_PUBLIC_ENV || "development",
+    },
+  },
+};
