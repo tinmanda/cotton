@@ -16,7 +16,7 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, size }) => (
-            <Lucide name="home" size={size} color={color} />
+            <Lucide name="house" size={size} color={color} />
           ),
         }}
       />

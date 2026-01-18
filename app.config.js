@@ -4,6 +4,7 @@ module.exports = {
   expo: {
     name: "Cotton",
     slug: "cotton",
+    owner: "cityteam",
     version: packageJson.version,
     orientation: "portrait",
     icon: "./assets/images/icon.png",
@@ -48,6 +49,9 @@ module.exports = {
       reactCompiler: true,
     },
     extra: {
+      eas: {
+        projectId: "1b1f62b0-a137-4c66-8935-ad7288fdb92e",
+      },
       // Back4App Parse Server configuration
       EXPO_PUBLIC_PARSE_APP_ID:
         process.env.EXPO_PUBLIC_PARSE_APP_ID ||

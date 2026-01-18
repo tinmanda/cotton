@@ -29,10 +29,10 @@ export default function ProfileScreen() {
         {user ? (
           <View className="mt-4">
             <Text className="text-gray-600">
-              Username: {user.username}
+              Phone: {user.phoneNumber}
             </Text>
-            {user.name && (
-              <Text className="text-gray-600">Name: {user.name}</Text>
+            {user.fullName && (
+              <Text className="text-gray-600">Name: {user.fullName}</Text>
             )}
             {user.email && (
               <Text className="text-gray-600">Email: {user.email}</Text>
