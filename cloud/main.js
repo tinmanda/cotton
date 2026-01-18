@@ -215,6 +215,13 @@ Parse.Cloud.define("createUser", async (request) => {
   // Save user with master key
   await user.save(null, { useMasterKey: true });
 
+  // Set ACL: user has read/write, public has read access
+  // Public read is required for login to work properly
+  const acl = new Parse.ACL(user);
+  acl.setPublicReadAccess(true);
+  user.setACL(acl);
+  await user.save(null, { useMasterKey: true });
+
   // Create session for the new user
   const Session = Parse.Object.extend("_Session");
   const session = new Session();
