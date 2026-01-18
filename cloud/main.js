@@ -3,6 +3,8 @@
  * Main entry point for Back4App Cloud Code functions
  */
 
+const { v4: uuidv4 } = require("uuid");
+
 // ============================================
 // OTP Authentication Cloud Functions
 // ============================================
@@ -21,6 +23,14 @@ function normalizePhoneNumber(countryCode, phoneNumber) {
     ? countryCode
     : `+${countryCode}`;
   return `${normalizedCode}${cleanPhone}`;
+}
+
+/**
+ * Generate a random password for users
+ * Users authenticate via OTP, so this password is never exposed to them
+ */
+function generateRandomPassword() {
+  return uuidv4() + uuidv4();
 }
 
 /**
@@ -102,52 +112,29 @@ Parse.Cloud.define("verifyOTP", async (request) => {
   const existingUser = await userQuery.first({ useMasterKey: true });
 
   if (existingUser) {
-    // Existing user - log them in by creating a session
-    // Generate a session token for the existing user
-    const sessionToken = existingUser.getSessionToken();
+    // Existing user - log them in using Parse.User.logIn()
+    // Generate a new password and update it, then log in
+    const newPassword = generateRandomPassword();
+    existingUser.set("password", newPassword);
+    await existingUser.save(null, { useMasterKey: true });
 
-    // If no active session, create a new one
-    if (!sessionToken) {
-      // Create a new session for the user
-      const Session = Parse.Object.extend("_Session");
-      const session = new Session();
-      session.set("user", existingUser);
-      session.set("createdWith", { action: "login", authProvider: "otp" });
-      session.set("restricted", false);
-      session.set("expiresAt", new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)); // 1 year
-      session.set(
-        "sessionToken",
-        "r:" + [...Array(24)].map(() => Math.random().toString(36)[2]).join("")
-      );
+    // Log in with the new password - Parse creates the session internally
+    const loggedInUser = await Parse.User.logIn(normalizedPhone, newPassword);
+    const sessionToken = loggedInUser.getSessionToken();
 
-      await session.save(null, { useMasterKey: true });
-
-      return {
-        isNewUser: false,
-        sessionToken: session.get("sessionToken"),
-        user: {
-          id: existingUser.id,
-          phoneNumber: normalizedPhone,
-          fullName: existingUser.get("fullName") || "",
-          email: existingUser.get("email"),
-          profilePhoto: existingUser.get("profilePhoto"),
-          createdAt: existingUser.createdAt,
-          updatedAt: existingUser.updatedAt,
-        },
-      };
-    }
+    console.log(`[verifyOTP] Logged in existing user ${loggedInUser.id}`);
 
     return {
       isNewUser: false,
       sessionToken: sessionToken,
       user: {
-        id: existingUser.id,
+        id: loggedInUser.id,
         phoneNumber: normalizedPhone,
-        fullName: existingUser.get("fullName") || "",
-        email: existingUser.get("email"),
-        profilePhoto: existingUser.get("profilePhoto"),
-        createdAt: existingUser.createdAt,
-        updatedAt: existingUser.updatedAt,
+        fullName: loggedInUser.get("fullName") || "",
+        email: loggedInUser.get("email"),
+        profilePhoto: loggedInUser.get("profilePhoto"),
+        createdAt: loggedInUser.createdAt,
+        updatedAt: loggedInUser.updatedAt,
       },
     };
   }
@@ -207,13 +194,17 @@ Parse.Cloud.define("createUser", async (request) => {
   const user = new Parse.User();
   user.set("username", normalizedPhone);
   user.set("email", `${normalizedPhone.replace("+", "")}@phone.cotton.app`);
-  user.set("password", crypto.randomUUID()); // Random password, not used for OTP auth
+
+  // Generate and store password - we need it for logIn() later
+  const password = generateRandomPassword();
+  user.set("password", password);
   user.set("fullName", fullName.trim());
   user.set("phoneNumber", normalizedPhone);
   user.set("countryIsoCode", countryIsoCode || "US");
 
-  // Save user with master key
-  await user.save(null, { useMasterKey: true });
+  // Use signUp() instead of save() for proper user creation
+  await user.signUp(null, { useMasterKey: true });
+  console.log(`[createUser] Created new user ${user.id} for ${normalizedPhone}`);
 
   // Set ACL: user has read/write, public has read access
   // Public read is required for login to work properly
@@ -222,30 +213,22 @@ Parse.Cloud.define("createUser", async (request) => {
   user.setACL(acl);
   await user.save(null, { useMasterKey: true });
 
-  // Create session for the new user
-  const Session = Parse.Object.extend("_Session");
-  const session = new Session();
-  session.set("user", user);
-  session.set("createdWith", { action: "signup", authProvider: "otp" });
-  session.set("restricted", false);
-  session.set("expiresAt", new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)); // 1 year
-  session.set(
-    "sessionToken",
-    "r:" + [...Array(24)].map(() => Math.random().toString(36)[2]).join("")
-  );
+  // Log in to get session token - Parse creates the session internally
+  const loggedInUser = await Parse.User.logIn(normalizedPhone, password);
+  const sessionToken = loggedInUser.getSessionToken();
 
-  await session.save(null, { useMasterKey: true });
+  console.log(`[createUser] Logged in new user ${loggedInUser.id}`);
 
   return {
-    sessionToken: session.get("sessionToken"),
+    sessionToken: sessionToken,
     user: {
-      id: user.id,
+      id: loggedInUser.id,
       phoneNumber: normalizedPhone,
-      fullName: user.get("fullName"),
-      email: user.get("email"),
-      profilePhoto: user.get("profilePhoto"),
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+      fullName: loggedInUser.get("fullName"),
+      email: loggedInUser.get("email"),
+      profilePhoto: loggedInUser.get("profilePhoto"),
+      createdAt: loggedInUser.createdAt,
+      updatedAt: loggedInUser.updatedAt,
     },
   };
 });
