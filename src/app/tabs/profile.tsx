@@ -45,6 +45,54 @@ export default function ProfileScreen() {
     return names[0][0].toUpperCase();
   };
 
+  const menuSections = [
+    {
+      title: "Account",
+      items: [
+        {
+          icon: "user",
+          label: "Account Settings",
+          subtitle: "Edit your profile information",
+          route: ROUTES.EDIT_PROFILE,
+        },
+      ],
+    },
+    {
+      title: "Business Settings",
+      items: [
+        {
+          icon: "store",
+          label: "Merchants",
+          subtitle: "Manage vendors and clients",
+          route: ROUTES.MERCHANTS,
+        },
+        {
+          icon: "users",
+          label: "Employees",
+          subtitle: "Manage team members",
+          route: ROUTES.EMPLOYEES,
+        },
+        {
+          icon: "tags",
+          label: "Categories",
+          subtitle: "Customize expense categories",
+          route: ROUTES.CATEGORIES,
+        },
+      ],
+    },
+    {
+      title: "About",
+      items: [
+        {
+          icon: "info",
+          label: "About Cotton",
+          subtitle: "Learn more about the app",
+          route: null,
+        },
+      ],
+    },
+  ];
+
   return (
     <SafeAreaView className="flex-1 bg-white" edges={["top", "left", "right"]}>
       {/* Header */}
@@ -81,55 +129,39 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Menu Items */}
-        <View className="px-6 py-6">
-          {/* Account Settings */}
-          <Pressable
-            onPress={() => router.push(ROUTES.EDIT_PROFILE)}
-            style={styles.menuItem}
-            className="mb-3 flex-row items-center justify-between rounded-xl px-4 py-3.5 active:bg-gray-100"
-          >
-            <View className="flex-row items-center">
-              <View style={styles.iconContainer}>
-                <Lucide name="user" size={18} color={COLORS.primary} />
-              </View>
-              <View className="ml-3">
-                <Text className="text-[15px] font-semibold text-gray-900">
-                  Account Settings
-                </Text>
-                <Text className="text-xs text-gray-500">
-                  Edit your profile information
-                </Text>
-              </View>
-            </View>
-            <View style={styles.chevronContainer}>
-              <Lucide name="chevron-right" size={18} color={COLORS.gray400} />
-            </View>
-          </Pressable>
-
-          {/* About */}
-          <Pressable
-            style={styles.menuItem}
-            className="flex-row items-center justify-between rounded-xl px-4 py-3.5 active:bg-gray-100"
-          >
-            <View className="flex-row items-center">
-              <View style={styles.iconContainer}>
-                <Lucide name="info" size={18} color={COLORS.primary} />
-              </View>
-              <View className="ml-3">
-                <Text className="text-[15px] font-semibold text-gray-900">
-                  About Cotton
-                </Text>
-                <Text className="text-xs text-gray-500">
-                  Learn more about the app
-                </Text>
-              </View>
-            </View>
-            <View style={styles.chevronContainer}>
-              <Lucide name="chevron-right" size={18} color={COLORS.gray400} />
-            </View>
-          </Pressable>
-        </View>
+        {/* Menu Sections */}
+        {menuSections.map((section, sectionIndex) => (
+          <View key={section.title} className="px-6 py-4">
+            <Text className="text-xs font-semibold text-gray-400 uppercase mb-3">
+              {section.title}
+            </Text>
+            {section.items.map((item, itemIndex) => (
+              <Pressable
+                key={item.label}
+                onPress={() => item.route && router.push(item.route as any)}
+                style={styles.menuItem}
+                className={`${itemIndex < section.items.length - 1 ? "mb-2" : ""} flex-row items-center justify-between rounded-xl px-4 py-3.5 active:bg-gray-100`}
+              >
+                <View className="flex-row items-center flex-1">
+                  <View style={styles.iconContainer}>
+                    <Lucide name={item.icon as any} size={18} color={COLORS.primary} />
+                  </View>
+                  <View className="ml-3 flex-1">
+                    <Text className="text-[15px] font-semibold text-gray-900">
+                      {item.label}
+                    </Text>
+                    <Text className="text-xs text-gray-500">
+                      {item.subtitle}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.chevronContainer}>
+                  <Lucide name="chevron-right" size={18} color={COLORS.gray400} />
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        ))}
 
         {/* Sign Out Button */}
         <View className="px-6 pt-4 pb-6">

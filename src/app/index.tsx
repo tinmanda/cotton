@@ -16,7 +16,7 @@ export default function IndexScreen() {
     // Wait a bit for auth state to be hydrated from storage
     const timer = setTimeout(() => {
       if (isAuthenticated && user) {
-        router.replace(ROUTES.HOME);
+        router.replace(ROUTES.DASHBOARD);
       } else {
         router.replace(ROUTES.AUTH);
       }
