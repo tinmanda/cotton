@@ -10,8 +10,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { useFocusEffect } from "expo-router";
-import { COLORS } from "@/constants";
+import { useFocusEffect, useRouter } from "expo-router";
+import { COLORS, buildRoute } from "@/constants";
 import { FinanceService } from "@/services";
 import { ITransaction, TransactionType } from "@/types";
 import { useToast } from "@/hooks/useToast";
@@ -51,6 +51,7 @@ function groupTransactionsByDate(transactions: ITransaction[]): { date: string; 
 type FilterType = "all" | "income" | "expense";
 
 export default function TransactionsScreen() {
+  const router = useRouter();
   const { showError } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -203,6 +204,7 @@ export default function TransactionsScreen() {
                     key={transaction.id}
                     transaction={transaction}
                     isLast={index === item.data.length - 1}
+                    onPress={() => router.push(buildRoute.transactionEdit(transaction.id) as any)}
                   />
                 ))}
               </View>
@@ -235,14 +237,17 @@ export default function TransactionsScreen() {
 function TransactionRow({
   transaction,
   isLast,
+  onPress,
 }: {
   transaction: ITransaction;
   isLast: boolean;
+  onPress: () => void;
 }) {
   const isExpense = transaction.type === "expense";
 
   return (
     <Pressable
+      onPress={onPress}
       className={`flex-row items-center px-4 py-3.5 active:bg-gray-50 ${
         !isLast ? "border-b border-gray-100" : ""
       }`}
@@ -282,7 +287,7 @@ function TransactionRow({
       </View>
 
       {/* Amount */}
-      <View className="items-end">
+      <View className="items-end mr-2">
         <Text
           className="text-sm font-semibold"
           style={{ color: isExpense ? COLORS.error : COLORS.success }}
@@ -296,6 +301,7 @@ function TransactionRow({
           </Text>
         )}
       </View>
+      <Lucide name="chevron-right" size={16} color={COLORS.gray400} />
     </Pressable>
   );
 }

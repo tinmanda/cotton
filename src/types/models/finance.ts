@@ -75,6 +75,7 @@ export interface IEmployee {
   name: string;
   role: string;
   projectId: string;
+  projectName?: string; // Denormalized for display
   monthlySalary: number;
   currency: Currency;
   status: EmployeeStatus;

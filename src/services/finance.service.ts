@@ -384,6 +384,54 @@ export class FinanceService {
     }
   }
 
+  /**
+   * Update a transaction
+   */
+  static async updateTransaction(params: {
+    transactionId: string;
+    amount?: number;
+    currency?: Currency;
+    type?: TransactionType;
+    date?: string;
+    merchantName?: string;
+    categoryId?: string | null;
+    projectId?: string | null;
+    employeeId?: string | null;
+    description?: string;
+    notes?: string;
+  }): Promise<ApiResponse<ITransaction>> {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.UPDATE_TRANSACTION,
+        params
+      );
+      return successResponse({
+        ...result,
+        date: new Date(result.date),
+        createdAt: new Date(result.createdAt),
+        updatedAt: new Date(result.updatedAt),
+      });
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
+   * Delete a transaction
+   */
+  static async deleteTransaction(
+    transactionId: string
+  ): Promise<ApiResponse<{ success: boolean; deletedId: string }>> {
+    try {
+      const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.DELETE_TRANSACTION, {
+        transactionId,
+      });
+      return successResponse(result);
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
   // ============================================
   // Dashboard & Analytics
   // ============================================

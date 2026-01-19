@@ -31,6 +31,8 @@ export const CLOUD_FUNCTIONS = {
   PARSE_TRANSACTION: "parseTransaction",
   CREATE_TRANSACTION_FROM_PARSED: "createTransactionFromParsed",
   GET_TRANSACTIONS: "getTransactions",
+  UPDATE_TRANSACTION: "updateTransaction",
+  DELETE_TRANSACTION: "deleteTransaction",
 
   // Dashboard & Analytics
   GET_DASHBOARD: "getDashboard",

@@ -22,6 +22,7 @@ export const ROUTES = {
 
   // Transaction screens
   TRANSACTION_CONFIRM: "/transactions/confirm",
+  TRANSACTION_EDIT: "/transactions/[id]/edit",
 
   // Settings screens
   MERCHANTS: "/settings/merchants",
@@ -40,4 +41,5 @@ export type RoutePath = (typeof ROUTES)[RouteKey];
  */
 export const buildRoute = {
   projectDetail: (id: string) => `/projects/${id}` as const,
+  transactionEdit: (id: string) => `/transactions/${id}/edit` as const,
 };

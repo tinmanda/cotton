@@ -1297,6 +1297,222 @@ Parse.Cloud.define("getProjectSummary", async (request) => {
 });
 
 // ============================================
+// Transaction Update & Delete Functions
+// ============================================
+
+Parse.Cloud.define("updateTransaction", async (request) => {
+  const user = requireUser(request);
+  const {
+    transactionId,
+    amount,
+    currency,
+    type,
+    date,
+    merchantName,
+    categoryId,
+    projectId,
+    employeeId,
+    description,
+    notes,
+  } = request.params;
+
+  if (!transactionId) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Transaction ID is required");
+  }
+
+  const query = new Parse.Query("Transaction");
+  query.equalTo("user", user);
+  query.include(["merchant", "category", "project", "employee"]);
+  const transaction = await query.get(transactionId, { useMasterKey: true });
+
+  const oldAmount = transaction.get("amount");
+  const oldType = transaction.get("type");
+  const oldMerchant = transaction.get("merchant");
+
+  // Update basic fields
+  if (amount !== undefined) {
+    transaction.set("amount", amount);
+    transaction.set("amountINR", convertToINR(amount, currency || transaction.get("currency")));
+  }
+  if (currency) transaction.set("currency", currency);
+  if (type) transaction.set("type", type);
+  if (date) transaction.set("date", new Date(date));
+  if (description !== undefined) transaction.set("description", description);
+  if (notes !== undefined) transaction.set("notes", notes);
+
+  // Handle merchant change
+  let merchant = oldMerchant;
+  if (merchantName && merchantName !== transaction.get("merchantName")) {
+    // Find or create new merchant
+    const merchantQuery = new Parse.Query("Merchant");
+    merchantQuery.equalTo("user", user);
+    merchantQuery.equalTo("name", merchantName.trim());
+    merchant = await merchantQuery.first({ useMasterKey: true });
+
+    if (!merchant) {
+      const Merchant = Parse.Object.extend("Merchant");
+      merchant = new Merchant();
+      merchant.set("name", merchantName.trim());
+      merchant.set("aliases", []);
+      merchant.set("totalSpent", 0);
+      merchant.set("totalReceived", 0);
+      merchant.set("transactionCount", 0);
+      merchant.set("user", user);
+      setUserACL(merchant, user);
+      await merchant.save(null, { useMasterKey: true });
+    }
+
+    transaction.set("merchant", merchant);
+    transaction.set("merchantName", merchantName.trim());
+  }
+
+  // Handle category change
+  if (categoryId !== undefined) {
+    if (categoryId) {
+      const catQuery = new Parse.Query("Category");
+      catQuery.equalTo("user", user);
+      const category = await catQuery.get(categoryId, { useMasterKey: true });
+      transaction.set("category", category);
+      transaction.set("categoryName", category.get("name"));
+    } else {
+      transaction.unset("category");
+      transaction.unset("categoryName");
+    }
+  }
+
+  // Handle project change
+  if (projectId !== undefined) {
+    if (projectId) {
+      const projQuery = new Parse.Query("Project");
+      projQuery.equalTo("user", user);
+      const project = await projQuery.get(projectId, { useMasterKey: true });
+      transaction.set("project", project);
+      transaction.set("projectName", project.get("name"));
+    } else {
+      transaction.unset("project");
+      transaction.unset("projectName");
+    }
+  }
+
+  // Handle employee change
+  if (employeeId !== undefined) {
+    if (employeeId) {
+      const empQuery = new Parse.Query("Employee");
+      empQuery.equalTo("user", user);
+      const employee = await empQuery.get(employeeId, { useMasterKey: true });
+      transaction.set("employee", employee);
+      transaction.set("employeeName", employee.get("name"));
+    } else {
+      transaction.unset("employee");
+      transaction.unset("employeeName");
+    }
+  }
+
+  await transaction.save(null, { useMasterKey: true });
+
+  // Update merchant totals if amount or type changed
+  const newAmount = transaction.get("amount");
+  const newType = transaction.get("type");
+  const newMerchant = transaction.get("merchant");
+
+  // If merchant changed, update both old and new merchant totals
+  if (oldMerchant && oldMerchant.id !== newMerchant?.id) {
+    // Remove from old merchant
+    if (oldType === "expense") {
+      oldMerchant.increment("totalSpent", -oldAmount);
+    } else {
+      oldMerchant.increment("totalReceived", -oldAmount);
+    }
+    oldMerchant.increment("transactionCount", -1);
+    await oldMerchant.save(null, { useMasterKey: true });
+
+    // Add to new merchant
+    if (newMerchant) {
+      if (newType === "expense") {
+        newMerchant.increment("totalSpent", newAmount);
+      } else {
+        newMerchant.increment("totalReceived", newAmount);
+      }
+      newMerchant.increment("transactionCount", 1);
+      await newMerchant.save(null, { useMasterKey: true });
+    }
+  } else if (newMerchant && (oldAmount !== newAmount || oldType !== newType)) {
+    // Same merchant, but amount or type changed
+    if (oldType === "expense") {
+      newMerchant.increment("totalSpent", -oldAmount);
+    } else {
+      newMerchant.increment("totalReceived", -oldAmount);
+    }
+    if (newType === "expense") {
+      newMerchant.increment("totalSpent", newAmount);
+    } else {
+      newMerchant.increment("totalReceived", newAmount);
+    }
+    await newMerchant.save(null, { useMasterKey: true });
+  }
+
+  console.log(`[updateTransaction] Updated transaction ${transactionId}`);
+
+  return {
+    id: transaction.id,
+    amount: transaction.get("amount"),
+    currency: transaction.get("currency"),
+    amountINR: transaction.get("amountINR"),
+    type: transaction.get("type"),
+    date: transaction.get("date"),
+    merchantId: transaction.get("merchant")?.id,
+    merchantName: transaction.get("merchantName"),
+    categoryId: transaction.get("category")?.id,
+    categoryName: transaction.get("categoryName"),
+    projectId: transaction.get("project")?.id,
+    projectName: transaction.get("projectName"),
+    employeeId: transaction.get("employee")?.id,
+    employeeName: transaction.get("employeeName"),
+    description: transaction.get("description"),
+    notes: transaction.get("notes"),
+    isRecurring: transaction.get("isRecurring"),
+    createdAt: transaction.createdAt,
+    updatedAt: transaction.updatedAt,
+  };
+});
+
+Parse.Cloud.define("deleteTransaction", async (request) => {
+  const user = requireUser(request);
+  const { transactionId } = request.params;
+
+  if (!transactionId) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Transaction ID is required");
+  }
+
+  const query = new Parse.Query("Transaction");
+  query.equalTo("user", user);
+  query.include("merchant");
+  const transaction = await query.get(transactionId, { useMasterKey: true });
+
+  const amount = transaction.get("amount");
+  const type = transaction.get("type");
+  const merchant = transaction.get("merchant");
+
+  // Update merchant totals
+  if (merchant) {
+    if (type === "expense") {
+      merchant.increment("totalSpent", -amount);
+    } else {
+      merchant.increment("totalReceived", -amount);
+    }
+    merchant.increment("transactionCount", -1);
+    await merchant.save(null, { useMasterKey: true });
+  }
+
+  // Delete the transaction
+  await transaction.destroy({ useMasterKey: true });
+
+  console.log(`[deleteTransaction] Deleted transaction ${transactionId}`);
+
+  return { success: true, deletedId: transactionId };
+});
+
+// ============================================
 // Utility Cloud Functions
 // ============================================
 

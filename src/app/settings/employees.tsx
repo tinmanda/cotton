@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -33,7 +33,21 @@ export default function EmployeesScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [employees, setEmployees] = useState<IEmployee[]>([]);
   const [projects, setProjects] = useState<IProject[]>([]);
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalMode, setModalMode] = useState<"create" | "edit">("create");
+  const [editingEmployee, setEditingEmployee] = useState<IEmployee | undefined>();
+
+  const openCreateModal = () => {
+    setModalMode("create");
+    setEditingEmployee(undefined);
+    setModalVisible(true);
+  };
+
+  const openEditModal = (employee: IEmployee) => {
+    setModalMode("edit");
+    setEditingEmployee(employee);
+    setModalVisible(true);
+  };
 
   const loadData = useCallback(async (showLoader = true) => {
     if (showLoader) setIsLoading(true);
@@ -95,7 +109,7 @@ export default function EmployeesScreen() {
           </View>
         </View>
         <Pressable
-          onPress={() => setShowAddModal(true)}
+          onPress={openCreateModal}
           style={styles.addButton}
           className="rounded-full"
         >
@@ -132,7 +146,7 @@ export default function EmployeesScreen() {
           </Text>
           {projects.length > 0 ? (
             <Pressable
-              onPress={() => setShowAddModal(true)}
+              onPress={openCreateModal}
               style={styles.emptyButton}
               className="mt-4 px-6 py-3 rounded-xl"
             >
@@ -159,6 +173,7 @@ export default function EmployeesScreen() {
                     key={employee.id}
                     employee={employee}
                     isLast={index === emps.length - 1}
+                    onPress={() => openEditModal(employee)}
                   />
                 ))}
               </View>
@@ -176,14 +191,16 @@ export default function EmployeesScreen() {
         />
       )}
 
-      <AddEmployeeModal
-        visible={showAddModal}
+      <EmployeeModal
+        visible={modalVisible}
+        mode={modalMode}
+        employee={editingEmployee}
         projects={projects}
-        onClose={() => setShowAddModal(false)}
-        onCreated={() => {
-          setShowAddModal(false);
+        onClose={() => setModalVisible(false)}
+        onSaved={(isEdit) => {
+          setModalVisible(false);
           loadData();
-          showSuccess("Employee added");
+          showSuccess(isEdit ? "Employee updated" : "Employee added");
         }}
       />
     </SafeAreaView>
@@ -193,13 +210,16 @@ export default function EmployeesScreen() {
 function EmployeeRow({
   employee,
   isLast,
+  onPress,
 }: {
   employee: IEmployee;
   isLast: boolean;
+  onPress: () => void;
 }) {
   return (
-    <View
-      className={`flex-row items-center px-4 py-3.5 ${
+    <Pressable
+      onPress={onPress}
+      className={`flex-row items-center px-4 py-3.5 active:bg-gray-50 ${
         !isLast ? "border-b border-gray-100" : ""
       }`}
     >
@@ -234,35 +254,65 @@ function EmployeeRow({
           </Text>
         </View>
       </View>
-    </View>
+      <Lucide name="chevron-right" size={16} color={COLORS.gray400} className="ml-2" />
+    </Pressable>
   );
 }
 
-function AddEmployeeModal({
+function EmployeeModal({
   visible,
+  mode,
+  employee,
   projects,
   onClose,
-  onCreated,
+  onSaved,
 }: {
   visible: boolean;
+  mode: "create" | "edit";
+  employee?: IEmployee;
   projects: IProject[];
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: (isEdit: boolean) => void;
 }) {
   const { showError } = useToast();
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
   const [projectId, setProjectId] = useState<string | undefined>();
   const [salary, setSalary] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
+  const [status, setStatus] = useState<"active" | "inactive">("active");
+  const [isSaving, setIsSaving] = useState(false);
 
+  const isEdit = mode === "edit";
+
+  // Reset form when modal opens
   useEffect(() => {
-    if (visible && projects.length > 0 && !projectId) {
-      setProjectId(projects[0].id);
+    if (visible) {
+      if (isEdit && employee) {
+        setName(employee.name);
+        setRole(employee.role);
+        setProjectId(employee.projectId);
+        setSalary(employee.monthlySalary.toString());
+        setStatus(employee.status);
+      } else {
+        setName("");
+        setRole("");
+        setProjectId(projects.length > 0 ? projects[0].id : undefined);
+        setSalary("");
+        setStatus("active");
+      }
     }
-  }, [visible, projects, projectId]);
+  }, [visible, isEdit, employee, projects]);
 
-  const handleCreate = async () => {
+  // Check if form has changed (for edit mode)
+  const hasChanges = isEdit && employee
+    ? name !== employee.name ||
+      role !== employee.role ||
+      projectId !== employee.projectId ||
+      salary !== employee.monthlySalary.toString() ||
+      status !== employee.status
+    : true;
+
+  const handleSave = async () => {
     if (name.trim().length < 2) {
       showError("Name must be at least 2 characters");
       return;
@@ -281,29 +331,44 @@ function AddEmployeeModal({
       return;
     }
 
-    setIsCreating(true);
+    setIsSaving(true);
     try {
-      const result = await FinanceService.createEmployee({
-        name: name.trim(),
-        role: role.trim(),
-        projectId,
-        monthlySalary: salaryNum,
-      });
+      if (isEdit && employee) {
+        const result = await FinanceService.updateEmployee({
+          employeeId: employee.id,
+          name: name.trim(),
+          role: role.trim(),
+          projectId,
+          monthlySalary: salaryNum,
+          status,
+        });
 
-      if (result.success) {
-        setName("");
-        setRole("");
-        setSalary("");
-        onCreated();
+        if (result.success) {
+          onSaved(true);
+        } else {
+          showError(result.error.message);
+        }
       } else {
-        showError(result.error.message);
+        const result = await FinanceService.createEmployee({
+          name: name.trim(),
+          role: role.trim(),
+          projectId,
+          monthlySalary: salaryNum,
+        });
+
+        if (result.success) {
+          onSaved(false);
+        } else {
+          showError(result.error.message);
+        }
       }
     } finally {
-      setIsCreating(false);
+      setIsSaving(false);
     }
   };
 
-  const isValid = name.trim().length >= 2 && role.trim() && projectId && parseFloat(salary) > 0;
+  const isFormValid = name.trim().length >= 2 && role.trim() && projectId && parseFloat(salary) > 0;
+  const isValid = isFormValid && (isEdit ? hasChanges : true);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
@@ -312,13 +377,15 @@ function AddEmployeeModal({
           <Pressable onPress={onClose} className="px-2 py-1">
             <Text className="text-base text-gray-600">Cancel</Text>
           </Pressable>
-          <Text className="text-lg font-semibold text-gray-900">Add Employee</Text>
+          <Text className="text-lg font-semibold text-gray-900">
+            {isEdit ? "Edit Employee" : "Add Employee"}
+          </Text>
           <Pressable
-            onPress={handleCreate}
-            disabled={isCreating || !isValid}
+            onPress={handleSave}
+            disabled={isSaving || !isValid}
             className="px-2 py-1"
           >
-            {isCreating ? (
+            {isSaving ? (
               <ActivityIndicator size="small" color={COLORS.primary} />
             ) : (
               <Text
@@ -326,7 +393,7 @@ function AddEmployeeModal({
                   isValid ? "text-primary" : "text-gray-300"
                 }`}
               >
-                Add
+                {isEdit ? "Save" : "Add"}
               </Text>
             )}
           </Pressable>
@@ -396,7 +463,7 @@ function AddEmployeeModal({
           {/* Salary */}
           <View className="mb-5">
             <Text className="text-sm font-medium text-gray-500 mb-2">
-              Monthly Salary (₹)
+              Monthly Salary
             </Text>
             <View className="bg-gray-100 rounded-xl px-4 py-4 flex-row items-center">
               <Text className="text-gray-500 mr-1">₹</Text>
@@ -410,6 +477,65 @@ function AddEmployeeModal({
               />
             </View>
           </View>
+
+          {/* Status (only show in edit mode) */}
+          {isEdit && (
+            <View className="mb-5">
+              <Text className="text-sm font-medium text-gray-500 mb-2">Status</Text>
+              <View className="flex-row gap-2">
+                <Pressable
+                  onPress={() => setStatus("active")}
+                  style={[
+                    styles.statusChip,
+                    status === "active" && styles.statusChipActive,
+                  ]}
+                  className="flex-row items-center px-4 py-2.5 rounded-xl"
+                >
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: status === "active" ? COLORS.success : COLORS.gray400,
+                      marginRight: 8,
+                    }}
+                  />
+                  <Text
+                    className={`text-sm font-medium ${
+                      status === "active" ? "text-success" : "text-gray-600"
+                    }`}
+                  >
+                    Active
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setStatus("inactive")}
+                  style={[
+                    styles.statusChip,
+                    status === "inactive" && styles.statusChipInactive,
+                  ]}
+                  className="flex-row items-center px-4 py-2.5 rounded-xl"
+                >
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: status === "inactive" ? COLORS.gray500 : COLORS.gray400,
+                      marginRight: 8,
+                    }}
+                  />
+                  <Text
+                    className={`text-sm font-medium ${
+                      status === "inactive" ? "text-gray-700" : "text-gray-600"
+                    }`}
+                  >
+                    Inactive
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -466,5 +592,18 @@ const styles = StyleSheet.create({
   projectChipSelected: {
     backgroundColor: `${COLORS.primary}10`,
     borderColor: COLORS.primary,
+  },
+  statusChip: {
+    backgroundColor: COLORS.gray100,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  statusChipActive: {
+    backgroundColor: `${COLORS.success}10`,
+    borderColor: COLORS.success,
+  },
+  statusChipInactive: {
+    backgroundColor: COLORS.gray100,
+    borderColor: COLORS.gray400,
   },
 });

@@ -40,10 +40,16 @@ function RootLayoutInner() {
   return (
     <>
       <StatusBar style="dark" />
-      <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="tabs" options={{ headerShown: false }} />
-        <Stack.Screen name="auth" options={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="tabs" />
+        <Stack.Screen name="auth" />
+        <Stack.Screen name="profile/edit" />
+        <Stack.Screen name="projects/[id]" />
+        <Stack.Screen name="transactions/[id]/edit" />
+        <Stack.Screen name="settings/employees" />
+        <Stack.Screen name="settings/merchants" />
+        <Stack.Screen name="settings/categories" />
       </Stack>
       <ToastContainer />
     </>

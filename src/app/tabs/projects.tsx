@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -41,7 +41,21 @@ export default function ProjectsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [projects, setProjects] = useState<IProject[]>([]);
   const [projectSummaries, setProjectSummaries] = useState<Record<string, { income: number; expenses: number; net: number }>>({});
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalMode, setModalMode] = useState<"create" | "edit">("create");
+  const [editingProject, setEditingProject] = useState<IProject | undefined>();
+
+  const openCreateModal = () => {
+    setModalMode("create");
+    setEditingProject(undefined);
+    setModalVisible(true);
+  };
+
+  const openEditModal = (project: IProject) => {
+    setModalMode("edit");
+    setEditingProject(project);
+    setModalVisible(true);
+  };
 
   const loadProjects = useCallback(async (showLoader = true) => {
     if (showLoader) setIsLoading(true);
@@ -102,7 +116,7 @@ export default function ProjectsScreen() {
           </Text>
         </View>
         <Pressable
-          onPress={() => setShowAddModal(true)}
+          onPress={openCreateModal}
           style={styles.addButton}
           className="rounded-full"
         >
@@ -133,7 +147,7 @@ export default function ProjectsScreen() {
               Create your first project to start tracking expenses
             </Text>
             <Pressable
-              onPress={() => setShowAddModal(true)}
+              onPress={openCreateModal}
               style={styles.emptyButton}
               className="mt-4 px-6 py-3 rounded-xl"
             >
@@ -179,7 +193,19 @@ export default function ProjectsScreen() {
                         </Text>
                       </View>
                     </View>
-                    <Lucide name="chevron-right" size={20} color={COLORS.gray400} />
+                    <View className="flex-row items-center">
+                      <Pressable
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          openEditModal(project);
+                        }}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        className="p-2 mr-1"
+                      >
+                        <Lucide name="pencil" size={16} color={COLORS.gray400} />
+                      </Pressable>
+                      <Lucide name="chevron-right" size={20} color={COLORS.gray400} />
+                    </View>
                   </View>
 
                   {summary && (
@@ -215,60 +241,103 @@ export default function ProjectsScreen() {
         )}
       </ScrollView>
 
-      <AddProjectModal
-        visible={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onCreated={() => {
-          setShowAddModal(false);
+      <ProjectModal
+        visible={modalVisible}
+        mode={modalMode}
+        project={editingProject}
+        onClose={() => setModalVisible(false)}
+        onSaved={(isEdit) => {
+          setModalVisible(false);
           loadProjects();
-          showSuccess("Project created");
+          showSuccess(isEdit ? "Project updated" : "Project created");
         }}
       />
     </SafeAreaView>
   );
 }
 
-function AddProjectModal({
+function ProjectModal({
   visible,
+  mode,
+  project,
   onClose,
-  onCreated,
+  onSaved,
 }: {
   visible: boolean;
+  mode: "create" | "edit";
+  project?: IProject;
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: (isEdit: boolean) => void;
 }) {
   const { showError } = useToast();
   const [name, setName] = useState("");
   const [type, setType] = useState<ProjectType>("service");
   const [color, setColor] = useState(PROJECT_COLORS[0]);
-  const [isCreating, setIsCreating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleCreate = async () => {
+  // Initialize form when modal opens or project changes
+  const isEdit = mode === "edit";
+
+  // Reset form when modal opens
+  useEffect(() => {
+    if (visible) {
+      if (isEdit && project) {
+        setName(project.name);
+        setType(project.type);
+        setColor(project.color);
+      } else {
+        setName("");
+        setType("service");
+        setColor(PROJECT_COLORS[0]);
+      }
+    }
+  }, [visible, isEdit, project]);
+
+  // Check if form has changed (for edit mode)
+  const hasChanges = isEdit && project
+    ? name !== project.name || type !== project.type || color !== project.color
+    : name.trim().length >= 2;
+
+  const handleSave = async () => {
     if (name.trim().length < 2) {
       showError("Name must be at least 2 characters");
       return;
     }
 
-    setIsCreating(true);
+    setIsSaving(true);
     try {
-      const result = await FinanceService.createProject({
-        name: name.trim(),
-        type,
-        color,
-      });
+      if (isEdit && project) {
+        const result = await FinanceService.updateProject({
+          projectId: project.id,
+          name: name.trim(),
+          type,
+          color,
+        });
 
-      if (result.success) {
-        setName("");
-        setType("service");
-        setColor(PROJECT_COLORS[0]);
-        onCreated();
+        if (result.success) {
+          onSaved(true);
+        } else {
+          showError(result.error.message);
+        }
       } else {
-        showError(result.error.message);
+        const result = await FinanceService.createProject({
+          name: name.trim(),
+          type,
+          color,
+        });
+
+        if (result.success) {
+          onSaved(false);
+        } else {
+          showError(result.error.message);
+        }
       }
     } finally {
-      setIsCreating(false);
+      setIsSaving(false);
     }
   };
+
+  const isValid = name.trim().length >= 2 && (isEdit ? hasChanges : true);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
@@ -278,21 +347,23 @@ function AddProjectModal({
           <Pressable onPress={onClose} className="px-2 py-1">
             <Text className="text-base text-gray-600">Cancel</Text>
           </Pressable>
-          <Text className="text-lg font-semibold text-gray-900">New Project</Text>
+          <Text className="text-lg font-semibold text-gray-900">
+            {isEdit ? "Edit Project" : "New Project"}
+          </Text>
           <Pressable
-            onPress={handleCreate}
-            disabled={isCreating || name.trim().length < 2}
+            onPress={handleSave}
+            disabled={isSaving || !isValid}
             className="px-2 py-1"
           >
-            {isCreating ? (
+            {isSaving ? (
               <ActivityIndicator size="small" color={COLORS.primary} />
             ) : (
               <Text
                 className={`text-base font-semibold ${
-                  name.trim().length >= 2 ? "text-primary" : "text-gray-300"
+                  isValid ? "text-primary" : "text-gray-300"
                 }`}
               >
-                Create
+                {isEdit ? "Save" : "Create"}
               </Text>
             )}
           </Pressable>
