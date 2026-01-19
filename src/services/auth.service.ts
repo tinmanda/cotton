@@ -153,4 +153,31 @@ export class AuthService {
       return false;
     }
   }
+
+  /**
+   * Update user's name
+   */
+  static async updateUserName(fullName: string): Promise<ApiResponse<IUser>> {
+    try {
+      const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.UPDATE_USER_NAME, {
+        fullName,
+      });
+
+      // Transform the response user to IUser
+      const responseUser = result.user;
+      const user: IUser = {
+        id: responseUser.id,
+        phoneNumber: responseUser.phoneNumber,
+        fullName: responseUser.fullName,
+        email: responseUser.email,
+        profilePhoto: responseUser.profilePhoto,
+        createdAt: new Date(responseUser.createdAt),
+        updatedAt: new Date(responseUser.updatedAt),
+      };
+
+      return successResponse(user);
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
 }

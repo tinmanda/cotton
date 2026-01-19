@@ -234,6 +234,65 @@ Parse.Cloud.define("createUser", async (request) => {
 });
 
 // ============================================
+// User Profile Cloud Functions
+// ============================================
+
+/**
+ * Update user's name
+ *
+ * @param {string} fullName - New name for the user
+ * @returns {{ success: boolean, user: object }}
+ */
+Parse.Cloud.define("updateUserName", async (request) => {
+  const { fullName } = request.params;
+  const user = request.user;
+
+  // Require authenticated user
+  if (!user) {
+    throw new Parse.Error(
+      Parse.Error.INVALID_SESSION_TOKEN,
+      "User must be authenticated"
+    );
+  }
+
+  // Validate name
+  if (!fullName || fullName.trim().length === 0) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Name is required");
+  }
+
+  const trimmedName = fullName.trim();
+  if (trimmedName.length < 2) {
+    throw new Parse.Error(
+      Parse.Error.INVALID_QUERY,
+      "Name must be at least 2 characters"
+    );
+  }
+
+  if (trimmedName.length > 100) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Name is too long");
+  }
+
+  // Update user's name
+  user.set("fullName", trimmedName);
+  await user.save(null, { useMasterKey: true });
+
+  console.log(`[updateUserName] Updated name for user ${user.id} to "${trimmedName}"`);
+
+  return {
+    success: true,
+    user: {
+      id: user.id,
+      phoneNumber: user.get("phoneNumber"),
+      fullName: user.get("fullName"),
+      email: user.get("email"),
+      profilePhoto: user.get("profilePhoto"),
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    },
+  };
+});
+
+// ============================================
 // Utility Cloud Functions
 // ============================================
 

@@ -13,6 +13,9 @@ export const ROUTES = {
   TABS: "/tabs",
   HOME: "/tabs/home",
   PROFILE: "/tabs/profile",
+
+  // Profile screens
+  EDIT_PROFILE: "/profile/edit",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;

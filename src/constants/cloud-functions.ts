@@ -6,6 +6,7 @@ export const CLOUD_FUNCTIONS = {
   REQUEST_OTP: "requestOTP",
   VERIFY_OTP: "verifyOTP",
   CREATE_USER: "createUser",
+  UPDATE_USER_NAME: "updateUserName",
   HELLO: "hello",
 } as const;
 

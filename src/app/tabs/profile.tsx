@@ -85,6 +85,7 @@ export default function ProfileScreen() {
         <View className="px-6 py-6">
           {/* Account Settings */}
           <Pressable
+            onPress={() => router.push(ROUTES.EDIT_PROFILE)}
             style={styles.menuItem}
             className="mb-3 flex-row items-center justify-between rounded-xl px-4 py-3.5 active:bg-gray-100"
           >
