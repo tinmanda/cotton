@@ -120,6 +120,23 @@ npm start      # Start Expo dev server
 npm run lint   # Run ESLint
 ```
 
+## Before Every Commit
+
+**IMPORTANT:** Before every git commit, bump the version number in `package.json`:
+
+1. Open `package.json`
+2. Increment the patch version: `1.0.0` → `1.0.1` → `1.0.2` → ... → `1.0.25` → `1.0.26`
+3. Only bump minor/major versions for significant changes (e.g., `1.0.25` → `1.1.0` for new features, `1.1.0` → `2.0.0` for breaking changes)
+
+Example commit flow:
+```bash
+# 1. First bump version in package.json (1.0.5 → 1.0.6)
+# 2. Then commit all changes including the version bump
+git add .
+git commit -m "Add feature X"
+git push
+```
+
 ## Adding Features Checklist
 
 1. **Types**: `types/models/feature.ts`, export from barrel
