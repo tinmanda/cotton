@@ -65,8 +65,12 @@ function convertToINR(amount, currency) {
 
 /**
  * Call Anthropic API (text only)
+ * Using same pattern as TinMen - embed system prompt in user message
  */
 async function callAnthropic(systemPrompt, userMessage) {
+  // Combine system prompt and user message (TinMen pattern)
+  const fullPrompt = `${systemPrompt}\n\n${userMessage}`;
+
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -75,10 +79,9 @@ async function callAnthropic(systemPrompt, userMessage) {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
+      model: "claude-3-haiku-20240307",
+      max_tokens: 2000,
+      messages: [{ role: "user", content: fullPrompt }],
     }),
   });
 
@@ -93,8 +96,13 @@ async function callAnthropic(systemPrompt, userMessage) {
 
 /**
  * Call Anthropic API with image support (for vision)
+ * Using same pattern as TinMen - embed system prompt in text message
+ * Note: Vision requires claude-3-sonnet or higher, so using claude-3-5-sonnet here
  */
 async function callAnthropicWithImage(systemPrompt, textMessage, imageBase64, mediaType = "image/jpeg") {
+  // Combine system prompt and text message (TinMen pattern)
+  const fullTextPrompt = `${systemPrompt}\n\n${textMessage}`;
+
   const content = [
     {
       type: "image",
@@ -106,7 +114,7 @@ async function callAnthropicWithImage(systemPrompt, textMessage, imageBase64, me
     },
     {
       type: "text",
-      text: textMessage,
+      text: fullTextPrompt,
     },
   ];
 
@@ -119,8 +127,7 @@ async function callAnthropicWithImage(systemPrompt, textMessage, imageBase64, me
     },
     body: JSON.stringify({
       model: "claude-3-5-sonnet-20241022",
-      max_tokens: 4096,
-      system: systemPrompt,
+      max_tokens: 2000,
       messages: [{ role: "user", content }],
     }),
   });
