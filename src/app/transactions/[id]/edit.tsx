@@ -48,7 +48,7 @@ export default function EditTransactionScreen() {
   const [currency, setCurrency] = useState<Currency>("INR");
   const [type, setType] = useState<TransactionType>("expense");
   const [date, setDate] = useState(formatDateForInput(new Date()));
-  const [contactName, setMerchantName] = useState("");
+  const [contactName, setContactName] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [description, setDescription] = useState("");
@@ -75,7 +75,7 @@ export default function EditTransactionScreen() {
           setCurrency(found.currency);
           setType(found.type);
           setDate(formatDateForInput(found.date));
-          setMerchantName(found.contactName || "");
+          setContactName(found.contactName || "");
           setCategoryId(found.categoryId || null);
           setProjectId(found.projectId || null);
           setDescription(found.description || "");
@@ -114,7 +114,7 @@ export default function EditTransactionScreen() {
       return;
     }
     if (!contactName.trim()) {
-      showError("Merchant name is required");
+      showError("Contact name is required");
       return;
     }
 
@@ -302,14 +302,14 @@ export default function EditTransactionScreen() {
             </View>
           </View>
 
-          {/* Merchant */}
+          {/* Contact */}
           <View style={styles.card} className="bg-white rounded-2xl p-4 mb-3">
-            <Text className="text-sm font-medium text-gray-500 mb-2">Merchant</Text>
+            <Text className="text-sm font-medium text-gray-500 mb-2">Contact</Text>
             <View className="bg-gray-100 rounded-xl px-4 py-3.5 flex-row items-center">
-              <Lucide name="store" size={18} color={COLORS.gray500} />
+              <Lucide name="user" size={18} color={COLORS.gray500} />
               <TextInput
                 value={contactName}
-                onChangeText={setMerchantName}
+                onChangeText={setContactName}
                 placeholder="e.g., Amazon, Swiggy"
                 placeholderTextColor={COLORS.gray400}
                 style={{ flex: 1, marginLeft: 12, fontSize: 16, color: COLORS.gray900 }}
