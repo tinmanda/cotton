@@ -11,7 +11,9 @@ const { v4: uuidv4 } = require("uuid");
 
 // Anthropic API key (set in Back4App environment variables)
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const USD_TO_INR_RATE = 83; // Approximate exchange rate
+
+// Fallback exchange rate (used if API fails)
+const FALLBACK_USD_TO_INR_RATE = 83;
 
 // Default categories to seed
 const DEFAULT_CATEGORIES = [
@@ -55,12 +57,81 @@ function generateRandomPassword() {
 }
 
 /**
- * Convert amount to INR
+ * Get exchange rate for a specific date (with caching)
+ * Uses exchangerate.host API for historical rates
+ * @param {string} fromCurrency - Source currency code (e.g., "USD")
+ * @param {string} toCurrency - Target currency code (e.g., "INR")
+ * @param {Date} date - Date for the exchange rate
+ * @returns {Promise<number>} Exchange rate
  */
-function convertToINR(amount, currency) {
+async function getExchangeRate(fromCurrency, toCurrency, date) {
+  if (fromCurrency === toCurrency) return 1;
+
+  // Format date as YYYY-MM-DD
+  const dateStr = date.toISOString().split("T")[0];
+  const cacheKey = `${fromCurrency}_${toCurrency}_${dateStr}`;
+
+  // Check cache first (ExchangeRate class)
+  const cacheQuery = new Parse.Query("ExchangeRate");
+  cacheQuery.equalTo("cacheKey", cacheKey);
+  const cached = await cacheQuery.first({ useMasterKey: true });
+
+  if (cached) {
+    console.log(`[getExchangeRate] Cache hit: ${cacheKey} = ${cached.get("rate")}`);
+    return cached.get("rate");
+  }
+
+  // Fetch from API (using Frankfurter - free, no API key required)
+  try {
+    const apiUrl = `https://api.frankfurter.app/${dateStr}?from=${fromCurrency}&to=${toCurrency}`;
+    console.log(`[getExchangeRate] Fetching: ${apiUrl}`);
+
+    const response = await fetch(apiUrl);
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data.rates || !data.rates[toCurrency]) {
+      throw new Error(`Invalid API response: ${JSON.stringify(data)}`);
+    }
+
+    const rate = data.rates[toCurrency];
+    console.log(`[getExchangeRate] Fetched: ${cacheKey} = ${rate}`);
+
+    // Cache the rate
+    const ExchangeRate = Parse.Object.extend("ExchangeRate");
+    const rateObj = new ExchangeRate();
+    rateObj.set("cacheKey", cacheKey);
+    rateObj.set("fromCurrency", fromCurrency);
+    rateObj.set("toCurrency", toCurrency);
+    rateObj.set("date", date);
+    rateObj.set("rate", rate);
+    await rateObj.save(null, { useMasterKey: true });
+
+    return rate;
+  } catch (error) {
+    console.error(`[getExchangeRate] API error: ${error.message}, using fallback`);
+    // Return fallback rate
+    if (fromCurrency === "USD" && toCurrency === "INR") {
+      return FALLBACK_USD_TO_INR_RATE;
+    }
+    return 1; // Default to 1:1 for unknown pairs
+  }
+}
+
+/**
+ * Convert amount to INR (async, uses real exchange rates)
+ * @param {number} amount - Amount to convert
+ * @param {string} currency - Source currency code
+ * @param {Date} date - Date for the exchange rate (defaults to today)
+ * @returns {Promise<number>} Amount in INR
+ */
+async function convertToINR(amount, currency, date = new Date()) {
   if (currency === "INR") return amount;
-  if (currency === "USD") return amount * USD_TO_INR_RATE;
-  return amount; // Default to same amount for unknown currencies
+
+  const rate = await getExchangeRate(currency, "INR", date);
+  return amount * rate;
 }
 
 /**
@@ -1132,11 +1203,12 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
     // Create transaction
     const Transaction = Parse.Object.extend("Transaction");
     const transaction = new Transaction();
+    const transactionDate = new Date(date);
     transaction.set("amount", amount);
     transaction.set("currency", currency);
-    transaction.set("amountINR", convertToINR(amount, currency));
+    transaction.set("amountINR", await convertToINR(amount, currency, transactionDate));
     transaction.set("type", type);
-    transaction.set("date", new Date(date));
+    transaction.set("date", transactionDate);
     transaction.set("merchant", merchant);
     transaction.set("merchantName", merchantName.trim());
     transaction.set("user", user);
@@ -1316,11 +1388,12 @@ Parse.Cloud.define("createTransactionFromParsed", async (request) => {
   // Create transaction
   const Transaction = Parse.Object.extend("Transaction");
   const transaction = new Transaction();
+  const transactionDate = new Date(date);
   transaction.set("amount", amount);
   transaction.set("currency", currency);
-  transaction.set("amountINR", convertToINR(amount, currency));
+  transaction.set("amountINR", await convertToINR(amount, currency, transactionDate));
   transaction.set("type", type);
-  transaction.set("date", new Date(date));
+  transaction.set("date", transactionDate);
   transaction.set("merchant", merchant);
   transaction.set("merchantName", merchant.get("name"));
 
@@ -1758,7 +1831,9 @@ Parse.Cloud.define("updateTransaction", async (request) => {
   // Update basic fields
   if (amount !== undefined) {
     transaction.set("amount", amount);
-    transaction.set("amountINR", convertToINR(amount, currency || transaction.get("currency")));
+    // Use new date if provided, otherwise use existing transaction date
+    const conversionDate = date ? new Date(date) : transaction.get("date");
+    transaction.set("amountINR", await convertToINR(amount, currency || transaction.get("currency"), conversionDate));
   }
   if (currency) transaction.set("currency", currency);
   if (type) transaction.set("type", type);
@@ -1944,6 +2019,21 @@ Parse.Cloud.define("deleteTransaction", async (request) => {
 
 Parse.Cloud.define("hello", async () => {
   return { message: "Hello from Cotton Cloud Code!" };
+});
+
+// Debug function to test exchange rate API
+Parse.Cloud.define("testExchangeRate", async (request) => {
+  const { amount, currency, date } = request.params;
+  const testDate = date ? new Date(date) : new Date();
+  const rate = await getExchangeRate(currency || "USD", "INR", testDate);
+  const converted = await convertToINR(amount || 100, currency || "USD", testDate);
+  return {
+    originalAmount: amount || 100,
+    currency: currency || "USD",
+    date: testDate.toISOString().split("T")[0],
+    exchangeRate: rate,
+    convertedToINR: converted,
+  };
 });
 
 // Debug function to check environment variables (remove in production)
