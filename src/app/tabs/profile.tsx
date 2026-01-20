@@ -64,7 +64,7 @@ export default function ProfileScreen() {
           icon: "users",
           label: "Contacts",
           subtitle: "Manage vendors and clients",
-          route: ROUTES.MERCHANTS,
+          route: ROUTES.CONTACTS,
         },
         {
           icon: "users",
