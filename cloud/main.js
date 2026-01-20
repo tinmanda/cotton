@@ -64,7 +64,7 @@ function convertToINR(amount, currency) {
 }
 
 /**
- * Call Anthropic API
+ * Call Anthropic API (text only)
  */
 async function callAnthropic(systemPrompt, userMessage) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -76,9 +76,52 @@ async function callAnthropic(systemPrompt, userMessage) {
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
+      max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Anthropic API error: ${error}`);
+  }
+
+  const data = await response.json();
+  return data.content[0].text;
+}
+
+/**
+ * Call Anthropic API with image support (for vision)
+ */
+async function callAnthropicWithImage(systemPrompt, textMessage, imageBase64, mediaType = "image/jpeg") {
+  const content = [
+    {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: mediaType,
+        data: imageBase64,
+      },
+    },
+    {
+      type: "text",
+      text: textMessage,
+    },
+  ];
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{ role: "user", content }],
     }),
   });
 
@@ -801,6 +844,375 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
       name: suggestedProject.get("name"),
       color: suggestedProject.get("color"),
     } : null,
+  };
+});
+
+// ============================================
+// Bulk Transaction Parsing
+// ============================================
+
+Parse.Cloud.define("parseBulkTransactions", async (request) => {
+  const user = requireUser(request);
+  const { text, source } = request.params;
+
+  if (!text || text.trim().length === 0) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Text is required");
+  }
+
+  // Get user's existing merchants, categories, projects, and employees for context
+  const [merchants, categories, projects, employees] = await Promise.all([
+    new Parse.Query("Merchant").equalTo("user", user).find({ useMasterKey: true }),
+    new Parse.Query("Category").equalTo("user", user).find({ useMasterKey: true }),
+    new Parse.Query("Project").equalTo("user", user).find({ useMasterKey: true }),
+    new Parse.Query("Employee").equalTo("user", user).find({ useMasterKey: true }),
+  ]);
+
+  const merchantList = merchants.map((m) => ({ id: m.id, name: m.get("name"), aliases: m.get("aliases") || [] }));
+  const categoryList = categories.map((c) => ({ id: c.id, name: c.get("name"), type: c.get("type") }));
+  const projectList = projects.map((p) => ({ id: p.id, name: p.get("name") }));
+  const employeeList = employees.map((e) => ({
+    id: e.id,
+    name: e.get("name"),
+    role: e.get("role"),
+    projectId: e.get("project")?.id,
+    monthlySalary: e.get("monthlySalary")
+  }));
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const systemPrompt = `You are a financial transaction parser for a solo founder's expense tracking app.
+Your job is to extract MULTIPLE transactions from text that may describe recurring payments, salary histories, or bulk entries.
+
+CONTEXT:
+- User's existing merchants: ${JSON.stringify(merchantList)}
+- User's categories: ${JSON.stringify(categoryList)}
+- User's projects: ${JSON.stringify(projectList)}
+- User's employees: ${JSON.stringify(employeeList)}
+- Today's date: ${today}
+
+RULES:
+1. Parse text that describes multiple transactions over time (e.g., "Ajay salary was 30K for Jan-Jun, then 60K for Jul-Oct")
+2. Generate one transaction per period mentioned (e.g., 6 transactions for Jan-Jun at 30K each)
+3. For salary payments, match to existing employees if possible
+4. Use the last day of each month for salary transactions
+5. Default currency is INR unless specified
+6. For ranges like "Jan-Jun 2025", create transactions for Jan 31, Feb 28, Mar 31, Apr 30, May 31, Jun 30
+7. If year not specified, use current year or infer from context
+8. Match merchants/employees by name (case-insensitive, partial match OK)
+
+RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
+{
+  "transactions": [
+    {
+      "amount": number,
+      "currency": "INR" | "USD",
+      "type": "income" | "expense",
+      "date": "YYYY-MM-DD",
+      "merchantName": "string (use employee name for salaries)",
+      "existingMerchantId": "string or null",
+      "existingEmployeeId": "string or null",
+      "suggestedCategoryId": "string or null",
+      "suggestedProjectId": "string or null",
+      "description": "brief description (e.g., 'January 2025 salary')"
+    }
+  ],
+  "summary": "Brief summary of what was parsed",
+  "confidence": 0.0-1.0
+}`;
+
+  const userMessage = `Parse these transactions:\n\n${text.trim()}`;
+
+  let parsedData;
+  try {
+    const aiResponse = await callAnthropic(systemPrompt, userMessage);
+    // Try to extract JSON from the response (handle potential markdown wrapping)
+    let jsonStr = aiResponse;
+    const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
+    }
+    parsedData = JSON.parse(jsonStr);
+  } catch (error) {
+    console.error("[parseBulkTransactions] AI parsing error:", error);
+    throw new Parse.Error(Parse.Error.SCRIPT_FAILED, "Failed to parse transaction text");
+  }
+
+  // Create RawInput record
+  const RawInput = Parse.Object.extend("RawInput");
+  const rawInput = new RawInput();
+  rawInput.set("originalText", text.trim());
+  rawInput.set("source", source || "manual");
+  rawInput.set("parsedData", parsedData);
+  rawInput.set("status", "pending");
+  rawInput.set("user", user);
+  setUserACL(rawInput, user);
+  await rawInput.save(null, { useMasterKey: true });
+
+  console.log(`[parseBulkTransactions] Parsed ${parsedData.transactions?.length || 0} transactions for user ${user.id}`);
+
+  return {
+    transactions: parsedData.transactions || [],
+    summary: parsedData.summary,
+    confidence: parsedData.confidence,
+    rawInputId: rawInput.id,
+    categories: categoryList,
+    projects: projectList,
+    employees: employeeList,
+  };
+});
+
+Parse.Cloud.define("parseTransactionFromImage", async (request) => {
+  const user = requireUser(request);
+  const { imageBase64, mediaType, source } = request.params;
+
+  if (!imageBase64) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Image is required");
+  }
+
+  // Get user's existing data for context
+  const [merchants, categories, projects] = await Promise.all([
+    new Parse.Query("Merchant").equalTo("user", user).find({ useMasterKey: true }),
+    new Parse.Query("Category").equalTo("user", user).find({ useMasterKey: true }),
+    new Parse.Query("Project").equalTo("user", user).find({ useMasterKey: true }),
+  ]);
+
+  const merchantList = merchants.map((m) => ({ id: m.id, name: m.get("name"), aliases: m.get("aliases") || [] }));
+  const categoryList = categories.map((c) => ({ id: c.id, name: c.get("name"), type: c.get("type") }));
+  const projectList = projects.map((p) => ({ id: p.id, name: p.get("name") }));
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const systemPrompt = `You are a financial transaction parser for a solo founder's expense tracking app.
+Your job is to extract transactions from images of receipts, invoices, bank statements, or any financial document.
+
+CONTEXT:
+- User's existing merchants: ${JSON.stringify(merchantList)}
+- User's categories: ${JSON.stringify(categoryList)}
+- User's projects: ${JSON.stringify(projectList)}
+- Today's date: ${today}
+
+RULES:
+1. Extract ALL transactions visible in the image
+2. For bank statements, extract each line item as a separate transaction
+3. For receipts/invoices, extract the total as one transaction (or line items if clearly listed)
+4. Identify: amount, currency, date, merchant/vendor name, description
+5. Match merchants to existing ones if possible (use aliases for matching)
+6. Suggest appropriate categories based on merchant/description
+7. Default currency: INR (unless clearly USD, EUR, etc.)
+8. If date not visible, use today's date
+9. For debits/payments = expense, for credits/receipts = income
+
+RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
+{
+  "transactions": [
+    {
+      "amount": number,
+      "currency": "INR" | "USD",
+      "type": "income" | "expense",
+      "date": "YYYY-MM-DD",
+      "merchantName": "string",
+      "existingMerchantId": "string or null",
+      "suggestedCategoryId": "string or null",
+      "suggestedProjectId": "string or null",
+      "description": "brief description"
+    }
+  ],
+  "documentType": "receipt" | "invoice" | "bank_statement" | "other",
+  "summary": "Brief summary of what was found in the image",
+  "confidence": 0.0-1.0
+}`;
+
+  const userMessage = "Extract all financial transactions from this image.";
+
+  let parsedData;
+  try {
+    const aiResponse = await callAnthropicWithImage(
+      systemPrompt,
+      userMessage,
+      imageBase64,
+      mediaType || "image/jpeg"
+    );
+    // Try to extract JSON from the response
+    let jsonStr = aiResponse;
+    const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
+    }
+    parsedData = JSON.parse(jsonStr);
+  } catch (error) {
+    console.error("[parseTransactionFromImage] AI parsing error:", error);
+    throw new Parse.Error(Parse.Error.SCRIPT_FAILED, "Failed to parse image");
+  }
+
+  // Create RawInput record (store reference to image parsing)
+  const RawInput = Parse.Object.extend("RawInput");
+  const rawInput = new RawInput();
+  rawInput.set("originalText", `[Image: ${parsedData.documentType || "unknown"}]`);
+  rawInput.set("source", source || "image");
+  rawInput.set("parsedData", parsedData);
+  rawInput.set("status", "pending");
+  rawInput.set("user", user);
+  setUserACL(rawInput, user);
+  await rawInput.save(null, { useMasterKey: true });
+
+  console.log(`[parseTransactionFromImage] Parsed ${parsedData.transactions?.length || 0} transactions from image for user ${user.id}`);
+
+  return {
+    transactions: parsedData.transactions || [],
+    documentType: parsedData.documentType,
+    summary: parsedData.summary,
+    confidence: parsedData.confidence,
+    rawInputId: rawInput.id,
+    categories: categoryList,
+    projects: projectList,
+  };
+});
+
+Parse.Cloud.define("createBulkTransactions", async (request) => {
+  const user = requireUser(request);
+  const { transactions, rawInputId } = request.params;
+
+  if (!transactions || !Array.isArray(transactions) || transactions.length === 0) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Transactions array is required");
+  }
+
+  const createdTransactions = [];
+
+  for (const txData of transactions) {
+    const {
+      amount,
+      currency,
+      type,
+      date,
+      merchantName,
+      categoryId,
+      projectId,
+      employeeId,
+      description,
+    } = txData;
+
+    if (!amount || !currency || !type || !date || !merchantName) {
+      continue; // Skip invalid transactions
+    }
+
+    // Find or create merchant
+    let merchant;
+    const merchantQuery = new Parse.Query("Merchant");
+    merchantQuery.equalTo("user", user);
+    merchantQuery.equalTo("name", merchantName.trim());
+    merchant = await merchantQuery.first({ useMasterKey: true });
+
+    if (!merchant) {
+      const Merchant = Parse.Object.extend("Merchant");
+      merchant = new Merchant();
+      merchant.set("name", merchantName.trim());
+      merchant.set("aliases", []);
+      merchant.set("totalSpent", 0);
+      merchant.set("totalReceived", 0);
+      merchant.set("transactionCount", 0);
+      merchant.set("user", user);
+      setUserACL(merchant, user);
+      await merchant.save(null, { useMasterKey: true });
+    }
+
+    // Create transaction
+    const Transaction = Parse.Object.extend("Transaction");
+    const transaction = new Transaction();
+    transaction.set("amount", amount);
+    transaction.set("currency", currency);
+    transaction.set("amountINR", convertToINR(amount, currency));
+    transaction.set("type", type);
+    transaction.set("date", new Date(date));
+    transaction.set("merchant", merchant);
+    transaction.set("merchantName", merchantName.trim());
+    transaction.set("user", user);
+    transaction.set("isRecurring", false);
+
+    if (categoryId) {
+      const catQuery = new Parse.Query("Category");
+      catQuery.equalTo("user", user);
+      try {
+        const category = await catQuery.get(categoryId, { useMasterKey: true });
+        transaction.set("category", category);
+        transaction.set("categoryName", category.get("name"));
+      } catch (e) {
+        // Category not found, skip
+      }
+    }
+
+    if (projectId) {
+      const projQuery = new Parse.Query("Project");
+      projQuery.equalTo("user", user);
+      try {
+        const project = await projQuery.get(projectId, { useMasterKey: true });
+        transaction.set("project", project);
+        transaction.set("projectName", project.get("name"));
+      } catch (e) {
+        // Project not found, skip
+      }
+    }
+
+    if (employeeId) {
+      const empQuery = new Parse.Query("Employee");
+      empQuery.equalTo("user", user);
+      try {
+        const employee = await empQuery.get(employeeId, { useMasterKey: true });
+        transaction.set("employee", employee);
+        transaction.set("employeeName", employee.get("name"));
+      } catch (e) {
+        // Employee not found, skip
+      }
+    }
+
+    if (description) {
+      transaction.set("description", description);
+    }
+
+    if (rawInputId) {
+      const rawInputPointer = Parse.Object.extend("RawInput").createWithoutData(rawInputId);
+      transaction.set("rawInput", rawInputPointer);
+    }
+
+    setUserACL(transaction, user);
+    await transaction.save(null, { useMasterKey: true });
+
+    // Update merchant totals
+    if (type === "expense") {
+      merchant.increment("totalSpent", amount);
+    } else {
+      merchant.increment("totalReceived", amount);
+    }
+    merchant.increment("transactionCount", 1);
+    await merchant.save(null, { useMasterKey: true });
+
+    createdTransactions.push({
+      id: transaction.id,
+      amount,
+      currency,
+      type,
+      date,
+      merchantName: merchantName.trim(),
+    });
+  }
+
+  // Update RawInput status
+  if (rawInputId) {
+    const rawInputQuery = new Parse.Query("RawInput");
+    rawInputQuery.equalTo("user", user);
+    try {
+      const rawInput = await rawInputQuery.get(rawInputId, { useMasterKey: true });
+      rawInput.set("status", "processed");
+      await rawInput.save(null, { useMasterKey: true });
+    } catch (e) {
+      // RawInput not found, ignore
+    }
+  }
+
+  console.log(`[createBulkTransactions] Created ${createdTransactions.length} transactions for user ${user.id}`);
+
+  return {
+    created: createdTransactions.length,
+    transactions: createdTransactions,
   };
 });
 

@@ -23,6 +23,7 @@ export const ROUTES = {
   // Transaction screens
   TRANSACTION_CONFIRM: "/transactions/confirm",
   TRANSACTION_EDIT: "/transactions/[id]/edit",
+  BULK_TRANSACTIONS: "/transactions/bulk",
 
   // Settings screens
   MERCHANTS: "/settings/merchants",

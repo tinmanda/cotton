@@ -196,6 +196,81 @@ export interface CreateTransactionFromParsedRequest {
   isRecurring?: boolean;
 }
 
+/**
+ * Parsed transaction item from bulk parsing
+ */
+export interface ParsedBulkTransaction {
+  amount: number;
+  currency: Currency;
+  type: TransactionType;
+  date: string;
+  merchantName: string;
+  existingMerchantId?: string | null;
+  existingEmployeeId?: string | null;
+  suggestedCategoryId?: string | null;
+  suggestedProjectId?: string | null;
+  description?: string;
+}
+
+/**
+ * Response from parseBulkTransactions cloud function
+ */
+export interface ParseBulkTransactionsResponse {
+  transactions: ParsedBulkTransaction[];
+  summary: string;
+  confidence: number;
+  rawInputId: string;
+  categories: Array<{ id: string; name: string; type: TransactionType }>;
+  projects: Array<{ id: string; name: string }>;
+  employees: Array<{ id: string; name: string; role: string; projectId?: string; monthlySalary: number }>;
+}
+
+/**
+ * Response from parseTransactionFromImage cloud function
+ */
+export interface ParseImageTransactionsResponse {
+  transactions: ParsedBulkTransaction[];
+  documentType: "receipt" | "invoice" | "bank_statement" | "other";
+  summary: string;
+  confidence: number;
+  rawInputId: string;
+  categories: Array<{ id: string; name: string; type: TransactionType }>;
+  projects: Array<{ id: string; name: string }>;
+}
+
+/**
+ * Request to create bulk transactions
+ */
+export interface CreateBulkTransactionsRequest {
+  transactions: Array<{
+    amount: number;
+    currency: Currency;
+    type: TransactionType;
+    date: string;
+    merchantName: string;
+    categoryId?: string;
+    projectId?: string;
+    employeeId?: string;
+    description?: string;
+  }>;
+  rawInputId?: string;
+}
+
+/**
+ * Response from createBulkTransactions cloud function
+ */
+export interface CreateBulkTransactionsResponse {
+  created: number;
+  transactions: Array<{
+    id: string;
+    amount: number;
+    currency: Currency;
+    type: TransactionType;
+    date: string;
+    merchantName: string;
+  }>;
+}
+
 // ============================================
 // Dashboard & Summary Types
 // ============================================

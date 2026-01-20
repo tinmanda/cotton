@@ -29,7 +29,10 @@ export const CLOUD_FUNCTIONS = {
 
   // Transactions
   PARSE_TRANSACTION: "parseTransaction",
+  PARSE_BULK_TRANSACTIONS: "parseBulkTransactions",
+  PARSE_TRANSACTION_FROM_IMAGE: "parseTransactionFromImage",
   CREATE_TRANSACTION_FROM_PARSED: "createTransactionFromParsed",
+  CREATE_BULK_TRANSACTIONS: "createBulkTransactions",
   GET_TRANSACTIONS: "getTransactions",
   UPDATE_TRANSACTION: "updateTransaction",
   DELETE_TRANSACTION: "deleteTransaction",

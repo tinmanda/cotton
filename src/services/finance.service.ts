@@ -9,6 +9,10 @@ import {
   IDashboardSummary,
   IProjectSummary,
   ParseTransactionResponse,
+  ParseBulkTransactionsResponse,
+  ParseImageTransactionsResponse,
+  CreateBulkTransactionsRequest,
+  CreateBulkTransactionsResponse,
   TransactionFilters,
   ProjectType,
   ProjectStatus,
@@ -303,6 +307,60 @@ export class FinanceService {
         text,
         source,
       });
+      return successResponse(result);
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
+   * Parse bulk transactions from text (e.g., salary ranges, recurring payments)
+   */
+  static async parseBulkTransactions(
+    text: string,
+    source?: string
+  ): Promise<ApiResponse<ParseBulkTransactionsResponse>> {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.PARSE_BULK_TRANSACTIONS,
+        { text, source }
+      );
+      return successResponse(result);
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
+   * Parse transactions from an image (receipt, invoice, bank statement)
+   */
+  static async parseTransactionFromImage(
+    imageBase64: string,
+    mediaType?: string,
+    source?: string
+  ): Promise<ApiResponse<ParseImageTransactionsResponse>> {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.PARSE_TRANSACTION_FROM_IMAGE,
+        { imageBase64, mediaType, source }
+      );
+      return successResponse(result);
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
+   * Create multiple transactions at once
+   */
+  static async createBulkTransactions(
+    params: CreateBulkTransactionsRequest
+  ): Promise<ApiResponse<CreateBulkTransactionsResponse>> {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.CREATE_BULK_TRANSACTIONS,
+        params
+      );
       return successResponse(result);
     } catch (error) {
       return errorResponseFromUnknown(error);
