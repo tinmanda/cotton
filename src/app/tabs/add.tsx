@@ -130,7 +130,7 @@ export default function AddTransactionScreen() {
 
       // Pick image
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: "images",
         allowsEditing: false,
         quality: 0.8,
         base64: true,
