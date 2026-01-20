@@ -26,6 +26,7 @@ export const CLOUD_FUNCTIONS = {
   // Merchants
   GET_MERCHANTS: "getMerchants",
   UPDATE_MERCHANT: "updateMerchant",
+  DELETE_MERCHANT: "deleteMerchant",
 
   // Transactions
   PARSE_TRANSACTION: "parseTransaction",

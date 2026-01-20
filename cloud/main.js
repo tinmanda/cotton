@@ -789,6 +789,39 @@ Parse.Cloud.define("updateMerchant", async (request) => {
   };
 });
 
+Parse.Cloud.define("deleteMerchant", async (request) => {
+  const user = requireUser(request);
+  const { merchantId } = request.params;
+
+  if (!merchantId) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Merchant ID is required");
+  }
+
+  // Get merchant
+  const merchantQuery = new Parse.Query("Merchant");
+  merchantQuery.equalTo("user", user);
+  const merchant = await merchantQuery.get(merchantId, { useMasterKey: true });
+
+  // Check if there are transactions associated with this merchant
+  const transactionQuery = new Parse.Query("Transaction");
+  transactionQuery.equalTo("user", user);
+  transactionQuery.equalTo("merchant", merchant);
+  const transactionCount = await transactionQuery.count({ useMasterKey: true });
+
+  if (transactionCount > 0) {
+    throw new Parse.Error(
+      Parse.Error.VALIDATION_ERROR,
+      `Cannot delete merchant: ${transactionCount} transaction(s) are associated with this merchant. Please delete or reassign those transactions first.`
+    );
+  }
+
+  // Delete the merchant
+  await merchant.destroy({ useMasterKey: true });
+  console.log(`[deleteMerchant] Deleted merchant ${merchantId} for user ${user.id}`);
+
+  return { success: true, deletedId: merchantId };
+});
+
 // ============================================
 // Transaction Parsing with Anthropic
 // ============================================
@@ -1214,13 +1247,16 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
     transaction.set("user", user);
     transaction.set("isRecurring", false);
 
+    let category = null;
+    let isSalaryPayment = false;
     if (categoryId) {
       const catQuery = new Parse.Query("Category");
       catQuery.equalTo("user", user);
       try {
-        const category = await catQuery.get(categoryId, { useMasterKey: true });
+        category = await catQuery.get(categoryId, { useMasterKey: true });
         transaction.set("category", category);
         transaction.set("categoryName", category.get("name"));
+        isSalaryPayment = category.get("name") === "Salaries";
       } catch (e) {
         // Category not found, skip
       }
@@ -1238,16 +1274,42 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
       }
     }
 
+    // Handle employee - either use provided employeeId or auto-create for salary payments
+    let employee = null;
     if (employeeId) {
       const empQuery = new Parse.Query("Employee");
       empQuery.equalTo("user", user);
       try {
-        const employee = await empQuery.get(employeeId, { useMasterKey: true });
-        transaction.set("employee", employee);
-        transaction.set("employeeName", employee.get("name"));
+        employee = await empQuery.get(employeeId, { useMasterKey: true });
       } catch (e) {
         // Employee not found, skip
       }
+    } else if (isSalaryPayment && merchantName) {
+      // Auto-create employee for salary payments
+      const empQuery = new Parse.Query("Employee");
+      empQuery.equalTo("user", user);
+      empQuery.equalTo("name", merchantName.trim());
+      employee = await empQuery.first({ useMasterKey: true });
+
+      if (!employee) {
+        // Create new employee
+        const Employee = Parse.Object.extend("Employee");
+        employee = new Employee();
+        employee.set("name", merchantName.trim());
+        employee.set("role", "Employee");
+        employee.set("monthlySalary", amount);
+        employee.set("currency", currency);
+        employee.set("status", "active");
+        employee.set("user", user);
+        setUserACL(employee, user);
+        await employee.save(null, { useMasterKey: true });
+        console.log(`[createBulkTransactions] Auto-created employee: ${employee.id} - ${merchantName}`);
+      }
+    }
+
+    if (employee) {
+      transaction.set("employee", employee);
+      transaction.set("employeeName", employee.get("name"));
     }
 
     if (description) {
@@ -1366,11 +1428,13 @@ Parse.Cloud.define("createTransactionFromParsed", async (request) => {
   let category = null;
   let project = null;
   let employee = null;
+  let isSalaryPayment = false;
 
   if (categoryId) {
     const catQuery = new Parse.Query("Category");
     catQuery.equalTo("user", user);
     category = await catQuery.get(categoryId, { useMasterKey: true });
+    isSalaryPayment = category.get("name") === "Salaries";
   }
 
   if (projectId) {
@@ -1379,10 +1443,35 @@ Parse.Cloud.define("createTransactionFromParsed", async (request) => {
     project = await projQuery.get(projectId, { useMasterKey: true });
   }
 
+  // Handle employee - either use provided employeeId or auto-create for salary payments
   if (employeeId) {
     const empQuery = new Parse.Query("Employee");
     empQuery.equalTo("user", user);
     employee = await empQuery.get(employeeId, { useMasterKey: true });
+  } else if (isSalaryPayment && merchantName) {
+    // Auto-create employee for salary payments
+    const empQuery = new Parse.Query("Employee");
+    empQuery.equalTo("user", user);
+    empQuery.equalTo("name", merchantName.trim());
+    employee = await empQuery.first({ useMasterKey: true });
+
+    if (!employee) {
+      // Create new employee
+      const Employee = Parse.Object.extend("Employee");
+      employee = new Employee();
+      employee.set("name", merchantName.trim());
+      employee.set("role", "Employee");
+      employee.set("monthlySalary", amount);
+      employee.set("currency", currency);
+      employee.set("status", "active");
+      employee.set("user", user);
+      if (project) {
+        employee.set("project", project);
+      }
+      setUserACL(employee, user);
+      await employee.save(null, { useMasterKey: true });
+      console.log(`[createTransactionFromParsed] Auto-created employee: ${employee.id} - ${merchantName}`);
+    }
   }
 
   // Create transaction

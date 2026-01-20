@@ -291,6 +291,23 @@ export class FinanceService {
     }
   }
 
+  /**
+   * Delete a merchant
+   * Note: Will fail if merchant has associated transactions
+   */
+  static async deleteMerchant(
+    merchantId: string
+  ): Promise<ApiResponse<{ success: boolean; deletedId: string }>> {
+    try {
+      const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.DELETE_MERCHANT, {
+        merchantId,
+      });
+      return successResponse(result);
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
   // ============================================
   // Transactions
   // ============================================
