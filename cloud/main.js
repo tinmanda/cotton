@@ -77,7 +77,7 @@ async function callAnthropic(systemPrompt, userMessage) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
+        model: "claude-3-haiku-20240307",
         max_tokens: 4096,
         system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],
@@ -127,7 +127,7 @@ async function callAnthropicWithImage(systemPrompt, textMessage, imageBase64, me
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
+        model: "claude-3-haiku-20240307",
         max_tokens: 4096,
         system: systemPrompt,
         messages: [{ role: "user", content }],
@@ -1944,4 +1944,16 @@ Parse.Cloud.define("deleteTransaction", async (request) => {
 
 Parse.Cloud.define("hello", async () => {
   return { message: "Hello from Cotton Cloud Code!" };
+});
+
+// Debug function to check environment variables (remove in production)
+Parse.Cloud.define("checkEnvVars", async () => {
+  const key = process.env.ANTHROPIC_API_KEY || "";
+  return {
+    ANTHROPIC_API_KEY_SET: !!key,
+    ANTHROPIC_API_KEY_LENGTH: key.length,
+    ANTHROPIC_API_KEY_PREFIX: key.substring(0, 20),
+    ANTHROPIC_API_KEY_MIDDLE: key.substring(60, 85),
+    ANTHROPIC_API_KEY_SUFFIX: key.substring(key.length - 15),
+  };
 });
