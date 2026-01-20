@@ -26,7 +26,8 @@ export const ROUTES = {
   BULK_TRANSACTIONS: "/transactions/bulk",
 
   // Settings screens
-  CONTACTS: "/settings/contacts",
+  CUSTOMERS: "/settings/contacts?type=customer",
+  SUPPLIERS: "/settings/contacts?type=supplier",
   EMPLOYEES: "/settings/employees",
   CATEGORIES: "/settings/categories",
 

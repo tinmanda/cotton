@@ -11,37 +11,57 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { COLORS } from "@/constants";
 import { FinanceService } from "@/services";
-import { IContact } from "@/types";
+import { IContact, ContactType } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
 function formatAmount(amount: number): string {
   return `₹${amount.toLocaleString("en-IN")}`;
 }
 
+// Screen config based on contact type
+const screenConfig = {
+  customer: {
+    title: "Customers",
+    subtitle: "clients",
+    icon: "user" as const,
+    emptyText: "No customers yet",
+    emptySubtext: "Customers are automatically created when you add income transactions",
+  },
+  supplier: {
+    title: "Suppliers",
+    subtitle: "vendors",
+    icon: "store" as const,
+    emptyText: "No suppliers yet",
+    emptySubtext: "Suppliers are automatically created when you add expense transactions",
+  },
+};
+
 export default function ContactsScreen() {
   const router = useRouter();
+  const { type } = useLocalSearchParams<{ type?: string }>();
   const { showError } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [contacts, setContacts] = useState<IContact[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Determine which type to show (default to supplier if not specified)
+  const contactType = (type === "customer" || type === "supplier") ? type : "supplier";
+  const config = screenConfig[contactType];
+
   const loadContacts = useCallback(
     async (showLoader = true) => {
       if (showLoader) setIsLoading(true);
       try {
         const result = await FinanceService.getContacts({
+          type: contactType as ContactType,
           search: searchQuery || undefined,
         });
         if (result.success) {
-          // Filter to show only suppliers and customers (not employees)
-          const nonEmployees = result.data.filter(
-            (c) => c.types.includes("supplier") || c.types.includes("customer")
-          );
-          setContacts(nonEmployees);
+          setContacts(result.data);
         } else {
           showError(result.error.message);
         }
@@ -50,7 +70,7 @@ export default function ContactsScreen() {
         setIsRefreshing(false);
       }
     },
-    [searchQuery, showError]
+    [contactType, searchQuery, showError]
   );
 
   useFocusEffect(
@@ -80,8 +100,8 @@ export default function ContactsScreen() {
           <Lucide name="chevron-left" size={24} color={COLORS.gray600} />
         </Pressable>
         <View className="flex-1">
-          <Text className="text-xl font-bold text-gray-900">Contacts</Text>
-          <Text className="text-xs text-gray-500">{contacts.length} vendors & clients</Text>
+          <Text className="text-xl font-bold text-gray-900">{config.title}</Text>
+          <Text className="text-xs text-gray-500">{contacts.length} {config.subtitle}</Text>
         </View>
       </View>
 
@@ -112,22 +132,22 @@ export default function ContactsScreen() {
       ) : filteredContacts.length === 0 ? (
         <View style={styles.emptyState} className="mx-4 mt-6 bg-white rounded-2xl p-8 items-center">
           <View style={styles.emptyIconBg}>
-            <Lucide name="users" size={32} color={COLORS.gray400} />
+            <Lucide name={config.icon} size={32} color={COLORS.gray400} />
           </View>
           <Text className="text-base font-medium text-gray-700 mt-4">
-            {searchQuery ? "No contacts found" : "No contacts yet"}
+            {searchQuery ? `No ${config.subtitle} found` : config.emptyText}
           </Text>
           <Text className="text-sm text-gray-500 text-center mt-1">
             {searchQuery
               ? "Try a different search term"
-              : "Contacts are automatically created when you add transactions"}
+              : config.emptySubtext}
           </Text>
         </View>
       ) : (
         <FlatList
           data={filteredContacts}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <ContactRow contact={item} />}
+          renderItem={({ item }) => <ContactRow contact={item} contactType={contactType} />}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -143,13 +163,10 @@ export default function ContactsScreen() {
   );
 }
 
-function ContactRow({ contact }: { contact: IContact }) {
-  const totalAmount = contact.totalSpent + contact.totalReceived;
-  const isSupplier = contact.types.includes("supplier");
-  const isCustomer = contact.types.includes("customer");
-
-  // Determine icon based on type
-  const iconName = isCustomer && !isSupplier ? "user" : "store";
+function ContactRow({ contact, contactType }: { contact: IContact; contactType: "customer" | "supplier" }) {
+  const isSupplier = contactType === "supplier";
+  const iconName = isSupplier ? "store" : "user";
+  const amount = isSupplier ? contact.totalSpent : contact.totalReceived;
 
   return (
     <View style={styles.contactCard} className="mx-4 mb-3 bg-white rounded-xl p-4">
@@ -159,44 +176,19 @@ function ContactRow({ contact }: { contact: IContact }) {
         </View>
         <View className="flex-1 ml-3">
           <Text className="text-base font-semibold text-gray-900">{contact.name}</Text>
-          <View className="flex-row items-center mt-0.5">
-            <Text className="text-xs text-gray-500">
-              {contact.transactionCount} transactions
-            </Text>
-            {contact.types.length > 0 && (
-              <View className="flex-row ml-2">
-                {isSupplier && (
-                  <View style={styles.typeBadge} className="px-1.5 py-0.5 rounded mr-1">
-                    <Text className="text-xs text-gray-500">Supplier</Text>
-                  </View>
-                )}
-                {isCustomer && (
-                  <View style={styles.typeBadge} className="px-1.5 py-0.5 rounded">
-                    <Text className="text-xs text-gray-500">Customer</Text>
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
+          <Text className="text-xs text-gray-500 mt-0.5">
+            {contact.transactionCount} transactions
+          </Text>
         </View>
+        {amount > 0 && (
+          <Text
+            className="text-sm font-semibold"
+            style={{ color: isSupplier ? COLORS.error : COLORS.success }}
+          >
+            {formatAmount(amount)}
+          </Text>
+        )}
       </View>
-
-      {totalAmount > 0 && (
-        <View className="flex-row mt-3 pt-3 border-t border-gray-100">
-          <View className="flex-1">
-            <Text className="text-xs text-gray-500">Spent</Text>
-            <Text className="text-sm font-medium text-error mt-0.5">
-              {formatAmount(contact.totalSpent)}
-            </Text>
-          </View>
-          <View className="flex-1">
-            <Text className="text-xs text-gray-500">Received</Text>
-            <Text className="text-sm font-medium text-success mt-0.5">
-              {formatAmount(contact.totalReceived)}
-            </Text>
-          </View>
-        </View>
-      )}
     </View>
   );
 }
@@ -234,8 +226,5 @@ const styles = StyleSheet.create({
     backgroundColor: `${COLORS.primary}15`,
     alignItems: "center",
     justifyContent: "center",
-  },
-  typeBadge: {
-    backgroundColor: COLORS.gray100,
   },
 });

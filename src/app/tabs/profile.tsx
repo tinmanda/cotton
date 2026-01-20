@@ -61,10 +61,16 @@ export default function ProfileScreen() {
       title: "Business Settings",
       items: [
         {
-          icon: "users",
-          label: "Contacts",
-          subtitle: "Manage vendors and clients",
-          route: ROUTES.CONTACTS,
+          icon: "user",
+          label: "Customers",
+          subtitle: "Manage your clients",
+          route: ROUTES.CUSTOMERS,
+        },
+        {
+          icon: "store",
+          label: "Suppliers",
+          subtitle: "Manage your vendors",
+          route: ROUTES.SUPPLIERS,
         },
         {
           icon: "users",
