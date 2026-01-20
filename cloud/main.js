@@ -9,8 +9,8 @@ const { v4: uuidv4 } = require("uuid");
 // Configuration
 // ============================================
 
-// API key is stored securely - deployed separately to Back4App
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "YOUR_ANTHROPIC_API_KEY";
+// Anthropic API key
+const ANTHROPIC_API_KEY = "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";
 const USD_TO_INR_RATE = 83; // Approximate exchange rate
 
 // Default categories to seed
