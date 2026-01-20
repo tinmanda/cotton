@@ -11,6 +11,8 @@ import {
   ParseTransactionResponse,
   ParseBulkTransactionsResponse,
   ParseImageTransactionsResponse,
+  ParseTransactionInputResponse,
+  ImageInput,
   CreateBulkTransactionsRequest,
   CreateBulkTransactionsResponse,
   TransactionFilters,
@@ -360,6 +362,26 @@ export class FinanceService {
       const result = await Parse.Cloud.run(
         CLOUD_FUNCTIONS.PARSE_TRANSACTION_FROM_IMAGE,
         { imageBase64, mediaType, source }
+      );
+      return successResponse(result);
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
+   * Parse transactions from unified input (text and/or images)
+   * Supports optional text, optional multiple images, or both
+   */
+  static async parseTransactionInput(params: {
+    text?: string;
+    images?: ImageInput[];
+    source?: string;
+  }): Promise<ApiResponse<ParseTransactionInputResponse>> {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.PARSE_TRANSACTION_INPUT,
+        params
       );
       return successResponse(result);
     } catch (error) {

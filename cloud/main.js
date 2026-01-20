@@ -220,6 +220,66 @@ async function callAnthropicWithImage(systemPrompt, textMessage, imageBase64, me
 }
 
 /**
+ * Call Anthropic API with optional text and multiple images
+ * @param {string} systemPrompt - System prompt
+ * @param {string|null} textMessage - Optional text message
+ * @param {Array<{base64: string, mediaType: string}>} images - Array of images
+ */
+async function callAnthropicWithMedia(systemPrompt, textMessage, images = []) {
+  const content = [];
+
+  // Add images first
+  for (const image of images) {
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: image.mediaType || "image/jpeg",
+        data: image.base64,
+      },
+    });
+  }
+
+  // Add text message
+  if (textMessage) {
+    content.push({
+      type: "text",
+      text: textMessage,
+    });
+  }
+
+  let response;
+  try {
+    response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-3-haiku-20240307",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: "user", content }],
+      }),
+    });
+  } catch (fetchError) {
+    console.error("[callAnthropicWithMedia] Fetch error:", fetchError.message);
+    throw new Error(`Anthropic fetch error: ${fetchError.message}`);
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("[callAnthropicWithMedia] API error:", errorText);
+    throw new Error(`Anthropic API error (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.content[0].text;
+}
+
+/**
  * Require authenticated user
  */
 function requireUser(request) {
@@ -1183,6 +1243,163 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
     rawInputId: rawInput.id,
     categories: categoryList,
     projects: projectList,
+  };
+});
+
+// ============================================
+// Unified Transaction Input Parsing
+// ============================================
+
+/**
+ * Unified transaction input parser
+ * Accepts optional text and/or multiple images
+ * Returns parsed transactions in bulk format
+ */
+Parse.Cloud.define("parseTransactionInput", async (request) => {
+  const user = requireUser(request);
+  const { text, images, source } = request.params;
+
+  // Validate: at least one of text or images required
+  const hasText = text && text.trim().length > 0;
+  const hasImages = images && Array.isArray(images) && images.length > 0;
+
+  if (!hasText && !hasImages) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "At least text or images are required");
+  }
+
+  // Get user's existing data for context
+  const [merchants, categories, projects, employees] = await Promise.all([
+    new Parse.Query("Merchant").equalTo("user", user).find({ useMasterKey: true }),
+    new Parse.Query("Category").equalTo("user", user).find({ useMasterKey: true }),
+    new Parse.Query("Project").equalTo("user", user).find({ useMasterKey: true }),
+    new Parse.Query("Employee").equalTo("user", user).find({ useMasterKey: true }),
+  ]);
+
+  const merchantList = merchants.map((m) => ({ id: m.id, name: m.get("name"), aliases: m.get("aliases") || [] }));
+  const categoryList = categories.map((c) => ({ id: c.id, name: c.get("name"), type: c.get("type") }));
+  const projectList = projects.map((p) => ({ id: p.id, name: p.get("name") }));
+  const employeeList = employees.map((e) => ({
+    id: e.id,
+    name: e.get("name"),
+    role: e.get("role"),
+    projectId: e.get("project")?.id,
+    monthlySalary: e.get("monthlySalary")
+  }));
+
+  const today = new Date().toISOString().split("T")[0];
+
+  // Build the system prompt
+  const systemPrompt = `You are a financial transaction parser for a solo founder's expense tracking app.
+Your job is to extract MULTIPLE transactions from the provided input (text, images, or both).
+
+CONTEXT:
+- User's existing merchants: ${JSON.stringify(merchantList)}
+- User's categories: ${JSON.stringify(categoryList)}
+- User's projects: ${JSON.stringify(projectList)}
+- User's employees: ${JSON.stringify(employeeList)}
+- Today's date: ${today}
+
+INPUT TYPES YOU MAY RECEIVE:
+1. Text only: SMS alerts, bank statements, salary info, manual notes
+2. Images only: Receipts, invoices, bank statements, screenshots
+3. Both: Images with additional context provided as text
+
+RULES:
+1. Extract ALL transactions from all provided inputs (text and images combined)
+2. For text describing multiple transactions over time (e.g., "Ajay salary was 30K for Jan-Jun, then 60K for Jul-Oct"), generate one transaction per period
+3. For images with multiple line items, extract each as a separate transaction
+4. If the user provides context text along with images, use that context to better categorize and understand the transactions
+5. For salary payments, match to existing employees if possible
+6. Use the last day of each month for salary transactions
+7. Default currency is INR unless specified
+8. Match merchants/employees by name (case-insensitive, partial match OK)
+9. For debits/payments = expense, for credits/receipts = income
+10. If date not visible or specified, use today's date
+
+RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
+{
+  "transactions": [
+    {
+      "amount": number,
+      "currency": "INR" | "USD",
+      "type": "income" | "expense",
+      "date": "YYYY-MM-DD",
+      "merchantName": "string (use employee name for salaries)",
+      "existingMerchantId": "string or null",
+      "existingEmployeeId": "string or null",
+      "suggestedCategoryId": "string or null",
+      "suggestedProjectId": "string or null",
+      "description": "brief description"
+    }
+  ],
+  "inputType": "text_only" | "image_only" | "text_and_image",
+  "documentTypes": ["receipt", "invoice", "bank_statement", "text_note", "other"],
+  "summary": "Brief summary of what was parsed",
+  "confidence": 0.0-1.0
+}`;
+
+  // Build the user message based on what's provided
+  let userMessage = "Extract all financial transactions from the following input:\n\n";
+
+  if (hasText) {
+    userMessage += `TEXT INPUT:\n${text.trim()}\n\n`;
+  }
+
+  if (hasImages) {
+    userMessage += `IMAGES: ${images.length} image(s) attached. Please analyze all images and extract transactions.\n`;
+    if (hasText) {
+      userMessage += `\nNote: Use the text above as additional context to help categorize and understand the transactions in the images.`;
+    }
+  }
+
+  let parsedData;
+  try {
+    let aiResponse;
+    if (hasImages) {
+      // Use vision API with images (and optional text)
+      aiResponse = await callAnthropicWithMedia(systemPrompt, userMessage, images);
+    } else {
+      // Text only - use regular API
+      aiResponse = await callAnthropic(systemPrompt, userMessage);
+    }
+
+    // Try to extract JSON from the response
+    let jsonStr = aiResponse;
+    const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
+    }
+    parsedData = JSON.parse(jsonStr);
+  } catch (error) {
+    console.error("[parseTransactionInput] AI parsing error:", error);
+    throw new Parse.Error(Parse.Error.SCRIPT_FAILED, `Failed to parse input: ${error.message}`);
+  }
+
+  // Create RawInput record
+  const RawInput = Parse.Object.extend("RawInput");
+  const rawInput = new RawInput();
+  rawInput.set("originalText", hasText ? text.trim() : `[${images.length} image(s)]`);
+  rawInput.set("source", source || (hasImages ? "image" : "manual"));
+  rawInput.set("parsedData", parsedData);
+  rawInput.set("hasImages", hasImages);
+  rawInput.set("imageCount", hasImages ? images.length : 0);
+  rawInput.set("status", "pending");
+  rawInput.set("user", user);
+  setUserACL(rawInput, user);
+  await rawInput.save(null, { useMasterKey: true });
+
+  console.log(`[parseTransactionInput] Parsed ${parsedData.transactions?.length || 0} transactions (text: ${hasText}, images: ${hasImages ? images.length : 0}) for user ${user.id}`);
+
+  return {
+    transactions: parsedData.transactions || [],
+    inputType: parsedData.inputType,
+    documentTypes: parsedData.documentTypes,
+    summary: parsedData.summary,
+    confidence: parsedData.confidence,
+    rawInputId: rawInput.id,
+    categories: categoryList,
+    projects: projectList,
+    employees: employeeList,
   };
 });
 

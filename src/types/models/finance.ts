@@ -239,6 +239,29 @@ export interface ParseImageTransactionsResponse {
 }
 
 /**
+ * Image input for unified parsing
+ */
+export interface ImageInput {
+  base64: string;
+  mediaType: string;
+}
+
+/**
+ * Response from parseTransactionInput cloud function (unified input)
+ */
+export interface ParseTransactionInputResponse {
+  transactions: ParsedBulkTransaction[];
+  inputType: "text_only" | "image_only" | "text_and_image";
+  documentTypes: Array<"receipt" | "invoice" | "bank_statement" | "text_note" | "other">;
+  summary: string;
+  confidence: number;
+  rawInputId: string;
+  categories: Array<{ id: string; name: string; type: TransactionType }>;
+  projects: Array<{ id: string; name: string }>;
+  employees: Array<{ id: string; name: string; role: string; projectId?: string; monthlySalary: number }>;
+}
+
+/**
  * Request to create bulk transactions
  */
 export interface CreateBulkTransactionsRequest {
