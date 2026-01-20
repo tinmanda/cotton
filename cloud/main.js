@@ -9,8 +9,8 @@ const { v4: uuidv4 } = require("uuid");
 // Configuration
 // ============================================
 
-// Anthropic API key
-const ANTHROPIC_API_KEY = "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";
+// Anthropic API key (set in Back4App environment variables)
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const USD_TO_INR_RATE = 83; // Approximate exchange rate
 
 // Default categories to seed
@@ -65,29 +65,33 @@ function convertToINR(amount, currency) {
 
 /**
  * Call Anthropic API (text only)
- * Using same pattern as TinMen - embed system prompt in user message
  */
 async function callAnthropic(systemPrompt, userMessage) {
-  // Combine system prompt and user message (TinMen pattern)
-  const fullPrompt = `${systemPrompt}\n\n${userMessage}`;
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-3-haiku-20240307",
-      max_tokens: 2000,
-      messages: [{ role: "user", content: fullPrompt }],
-    }),
-  });
+  let response;
+  try {
+    response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }],
+      }),
+    });
+  } catch (fetchError) {
+    console.error("[callAnthropic] Fetch error:", fetchError.message);
+    throw new Error(`Anthropic fetch error: ${fetchError.message}`);
+  }
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Anthropic API error: ${error}`);
+    const errorText = await response.text();
+    console.error("[callAnthropic] API error:", errorText);
+    throw new Error(`Anthropic API error (${response.status}): ${errorText}`);
   }
 
   const data = await response.json();
@@ -96,13 +100,8 @@ async function callAnthropic(systemPrompt, userMessage) {
 
 /**
  * Call Anthropic API with image support (for vision)
- * Using same pattern as TinMen - embed system prompt in text message
- * Note: Vision requires claude-3-sonnet or higher, so using claude-3-5-sonnet here
  */
 async function callAnthropicWithImage(systemPrompt, textMessage, imageBase64, mediaType = "image/jpeg") {
-  // Combine system prompt and text message (TinMen pattern)
-  const fullTextPrompt = `${systemPrompt}\n\n${textMessage}`;
-
   const content = [
     {
       type: "image",
@@ -114,27 +113,35 @@ async function callAnthropicWithImage(systemPrompt, textMessage, imageBase64, me
     },
     {
       type: "text",
-      text: fullTextPrompt,
+      text: textMessage,
     },
   ];
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 2000,
-      messages: [{ role: "user", content }],
-    }),
-  });
+  let response;
+  try {
+    response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: "user", content }],
+      }),
+    });
+  } catch (fetchError) {
+    console.error("[callAnthropicWithImage] Fetch error:", fetchError.message);
+    throw new Error(`Anthropic fetch error: ${fetchError.message}`);
+  }
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Anthropic API error: ${error}`);
+    const errorText = await response.text();
+    console.error("[callAnthropicWithImage] API error:", errorText);
+    throw new Error(`Anthropic API error (${response.status}): ${errorText}`);
   }
 
   const data = await response.json();
@@ -779,8 +786,8 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
     const aiResponse = await callAnthropic(systemPrompt, userMessage);
     parsedData = JSON.parse(aiResponse);
   } catch (error) {
-    console.error("[parseTransaction] AI parsing error:", error);
-    throw new Parse.Error(Parse.Error.SCRIPT_FAILED, "Failed to parse transaction text");
+    console.error("[parseTransaction] Error:", error.message);
+    throw new Parse.Error(Parse.Error.SCRIPT_FAILED, `Failed to parse transaction: ${error.message}`);
   }
 
   // Create RawInput record
