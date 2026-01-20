@@ -16,10 +16,11 @@ import { Lucide } from "@react-native-vector-icons/lucide";
 import { useRouter, useFocusEffect } from "expo-router";
 import { COLORS } from "@/constants";
 import { FinanceService } from "@/services";
-import { IEmployee, IProject } from "@/types";
+import { IContact, IProject, EmployeeStatus, Currency } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
-function formatSalary(amount: number, currency: string): string {
+function formatSalary(amount: number | undefined, currency: Currency | undefined): string {
+  if (!amount) return "Not set";
   if (currency === "USD") {
     return `$${amount.toLocaleString("en-US")}/mo`;
   }
@@ -31,11 +32,11 @@ export default function EmployeesScreen() {
   const { showSuccess, showError } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [employees, setEmployees] = useState<IEmployee[]>([]);
+  const [employees, setEmployees] = useState<IContact[]>([]);
   const [projects, setProjects] = useState<IProject[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
-  const [editingEmployee, setEditingEmployee] = useState<IEmployee | undefined>();
+  const [editingEmployee, setEditingEmployee] = useState<IContact | undefined>();
 
   const openCreateModal = () => {
     setModalMode("create");
@@ -43,7 +44,7 @@ export default function EmployeesScreen() {
     setModalVisible(true);
   };
 
-  const openEditModal = (employee: IEmployee) => {
+  const openEditModal = (employee: IContact) => {
     setModalMode("edit");
     setEditingEmployee(employee);
     setModalVisible(true);
@@ -53,7 +54,7 @@ export default function EmployeesScreen() {
     if (showLoader) setIsLoading(true);
     try {
       const [empResult, projResult] = await Promise.all([
-        FinanceService.getEmployees(),
+        FinanceService.getContacts({ type: "employee" }),
         FinanceService.getProjects(),
       ]);
       if (empResult.success) setEmployees(empResult.data);
@@ -84,10 +85,10 @@ export default function EmployeesScreen() {
       acc[projectName].push(emp);
       return acc;
     },
-    {} as Record<string, IEmployee[]>
+    {} as Record<string, IContact[]>
   );
 
-  const totalMonthlySalary = employees.reduce((sum, e) => sum + e.monthlySalary, 0);
+  const totalMonthlySalary = employees.reduce((sum, e) => sum + (e.monthlySalary || 0), 0);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
@@ -212,10 +213,11 @@ function EmployeeRow({
   isLast,
   onPress,
 }: {
-  employee: IEmployee;
+  employee: IContact;
   isLast: boolean;
   onPress: () => void;
 }) {
+  const status = employee.employeeStatus || "active";
   return (
     <Pressable
       onPress={onPress}
@@ -228,18 +230,18 @@ function EmployeeRow({
       </View>
       <View className="flex-1 ml-3">
         <Text className="text-sm font-semibold text-gray-900">{employee.name}</Text>
-        <Text className="text-xs text-gray-500 mt-0.5">{employee.role}</Text>
+        <Text className="text-xs text-gray-500 mt-0.5">{employee.role || "Employee"}</Text>
       </View>
       <View className="items-end">
         <Text className="text-sm font-semibold text-gray-900">
-          {formatSalary(employee.monthlySalary, employee.currency)}
+          {formatSalary(employee.monthlySalary, employee.salaryCurrency)}
         </Text>
         <View
           style={[
             styles.statusBadge,
             {
               backgroundColor:
-                employee.status === "active" ? `${COLORS.success}15` : `${COLORS.gray400}15`,
+                status === "active" ? `${COLORS.success}15` : `${COLORS.gray400}15`,
             },
           ]}
           className="px-2 py-0.5 rounded-full mt-1"
@@ -247,10 +249,10 @@ function EmployeeRow({
           <Text
             className="text-xs font-medium capitalize"
             style={{
-              color: employee.status === "active" ? COLORS.success : COLORS.gray500,
+              color: status === "active" ? COLORS.success : COLORS.gray500,
             }}
           >
-            {employee.status}
+            {status}
           </Text>
         </View>
       </View>
@@ -269,7 +271,7 @@ function EmployeeModal({
 }: {
   visible: boolean;
   mode: "create" | "edit";
-  employee?: IEmployee;
+  employee?: IContact;
   projects: IProject[];
   onClose: () => void;
   onSaved: (isEdit: boolean) => void;
@@ -279,7 +281,7 @@ function EmployeeModal({
   const [role, setRole] = useState("");
   const [projectId, setProjectId] = useState<string | undefined>();
   const [salary, setSalary] = useState("");
-  const [status, setStatus] = useState<"active" | "inactive">("active");
+  const [status, setStatus] = useState<EmployeeStatus>("active");
   const [isSaving, setIsSaving] = useState(false);
 
   const isEdit = mode === "edit";
@@ -289,10 +291,10 @@ function EmployeeModal({
     if (visible) {
       if (isEdit && employee) {
         setName(employee.name);
-        setRole(employee.role);
+        setRole(employee.role || "");
         setProjectId(employee.projectId);
-        setSalary(employee.monthlySalary.toString());
-        setStatus(employee.status);
+        setSalary(employee.monthlySalary?.toString() || "");
+        setStatus(employee.employeeStatus || "active");
       } else {
         setName("");
         setRole("");
@@ -306,10 +308,10 @@ function EmployeeModal({
   // Check if form has changed (for edit mode)
   const hasChanges = isEdit && employee
     ? name !== employee.name ||
-      role !== employee.role ||
+      role !== (employee.role || "") ||
       projectId !== employee.projectId ||
-      salary !== employee.monthlySalary.toString() ||
-      status !== employee.status
+      salary !== (employee.monthlySalary?.toString() || "") ||
+      status !== (employee.employeeStatus || "active")
     : true;
 
   const handleSave = async () => {
@@ -334,13 +336,13 @@ function EmployeeModal({
     setIsSaving(true);
     try {
       if (isEdit && employee) {
-        const result = await FinanceService.updateEmployee({
-          employeeId: employee.id,
+        const result = await FinanceService.updateContact({
+          contactId: employee.id,
           name: name.trim(),
           role: role.trim(),
           projectId,
           monthlySalary: salaryNum,
-          status,
+          employeeStatus: status,
         });
 
         if (result.success) {
@@ -349,8 +351,9 @@ function EmployeeModal({
           showError(result.error.message);
         }
       } else {
-        const result = await FinanceService.createEmployee({
+        const result = await FinanceService.createContact({
           name: name.trim(),
+          types: ["employee"],
           role: role.trim(),
           projectId,
           monthlySalary: salaryNum,

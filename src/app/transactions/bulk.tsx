@@ -35,7 +35,6 @@ interface BulkTransactionItem extends ParsedBulkTransaction {
   selected: boolean;
   categoryId?: string;
   projectId?: string;
-  employeeId?: string;
 }
 
 export default function BulkTransactionsScreen() {
@@ -55,7 +54,6 @@ export default function BulkTransactionsScreen() {
       selected: true,
       categoryId: t.suggestedCategoryId || undefined,
       projectId: t.suggestedProjectId || undefined,
-      employeeId: t.existingEmployeeId || undefined,
     }))
   );
   const [isCreating, setIsCreating] = useState(false);
@@ -89,10 +87,9 @@ export default function BulkTransactionsScreen() {
           currency: t.currency,
           type: t.type,
           date: t.date,
-          merchantName: t.merchantName,
+          contactName: t.contactName,
           categoryId: t.categoryId,
           projectId: t.projectId,
-          employeeId: t.employeeId,
           description: t.description,
         })),
         rawInputId,
@@ -224,7 +221,7 @@ export default function BulkTransactionsScreen() {
                       }`}
                       numberOfLines={1}
                     >
-                      {transaction.merchantName}
+                      {transaction.contactName}
                     </Text>
                     <Text
                       className="text-base font-semibold"

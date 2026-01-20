@@ -18,15 +18,11 @@ export const CLOUD_FUNCTIONS = {
   GET_PROJECTS: "getProjects",
   UPDATE_PROJECT: "updateProject",
 
-  // Employees
-  CREATE_EMPLOYEE: "createEmployee",
-  GET_EMPLOYEES: "getEmployees",
-  UPDATE_EMPLOYEE: "updateEmployee",
-
-  // Merchants
-  GET_MERCHANTS: "getMerchants",
-  UPDATE_MERCHANT: "updateMerchant",
-  DELETE_MERCHANT: "deleteMerchant",
+  // Contacts (unified: customers, suppliers, employees)
+  CREATE_CONTACT: "createContact",
+  GET_CONTACTS: "getContacts",
+  UPDATE_CONTACT: "updateContact",
+  DELETE_CONTACT: "deleteContact",
 
   // Transactions
   PARSE_TRANSACTION: "parseTransaction",

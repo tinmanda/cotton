@@ -191,9 +191,9 @@ export default function DashboardScreen() {
               </Text>
             </View>
             <View style={styles.statChip} className="flex-1 flex-row items-center justify-center py-3 rounded-xl">
-              <Lucide name="store" size={16} color={COLORS.primary} />
+              <Lucide name="users" size={16} color={COLORS.primary} />
               <Text className="text-sm font-medium text-gray-700 ml-2">
-                {dashboard?.merchantCount || 0} Merchants
+                {dashboard?.contactCount || 0} Contacts
               </Text>
             </View>
           </View>
@@ -341,7 +341,7 @@ function TransactionRow({
     >
       <View className="flex-1">
         <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>
-          {transaction.merchantName || "Unknown"}
+          {transaction.contactName || "Unknown"}
         </Text>
         <Text className="text-xs text-gray-500 mt-0.5">
           {transaction.categoryName || "Uncategorized"} • {formatDate(transaction.date)}

@@ -271,7 +271,7 @@ function TransactionRow({
       {/* Details */}
       <View className="flex-1 ml-3">
         <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
-          {transaction.merchantName || "Unknown"}
+          {transaction.contactName || "Unknown"}
         </Text>
         <View className="flex-row items-center mt-0.5">
           <Text className="text-xs text-gray-500">

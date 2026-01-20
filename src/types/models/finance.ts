@@ -11,6 +11,7 @@ export type TransactionType = "income" | "expense";
 export type Currency = "INR" | "USD";
 export type ProjectStatus = "active" | "paused" | "closed";
 export type ProjectType = "service" | "product" | "investment" | "other";
+export type ContactType = "customer" | "supplier" | "employee";
 export type EmployeeStatus = "active" | "inactive";
 export type RawInputStatus = "pending" | "processed" | "failed";
 export type RawInputSource = "sms" | "email" | "manual" | "voice";
@@ -50,38 +51,29 @@ export interface ICategory {
 }
 
 /**
- * Merchant - Vendor or client
+ * Contact - Unified entity for customers, suppliers, and employees
  */
-export interface IMerchant {
+export interface IContact {
   id: string;
   name: string;
+  types: ContactType[]; // Can be multiple: customer, supplier, employee
   aliases: string[]; // Alternative names for AI matching
-  defaultCategoryId?: string;
-  defaultProjectId?: string;
+  email?: string;
+  phone?: string;
+  company?: string;
   website?: string;
   notes?: string;
   totalSpent: number; // Aggregated expense total
   totalReceived: number; // Aggregated income total
   transactionCount: number;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-/**
- * Employee - Team member with salary tracking
- */
-export interface IEmployee {
-  id: string;
-  name: string;
-  role: string;
-  projectId: string;
+  defaultCategoryId?: string;
+  // Employee-specific fields (optional)
+  role?: string;
+  monthlySalary?: number;
+  salaryCurrency?: Currency;
+  employeeStatus?: EmployeeStatus;
+  projectId?: string;
   projectName?: string; // Denormalized for display
-  monthlySalary: number;
-  currency: Currency;
-  status: EmployeeStatus;
-  email?: string;
-  phone?: string;
-  notes?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -106,14 +98,12 @@ export interface ITransaction {
   amountINR: number; // Normalized to INR for reporting
   type: TransactionType;
   date: Date;
-  merchantId?: string;
-  merchantName?: string; // Denormalized for display
+  contactId?: string;
+  contactName?: string; // Denormalized for display
   categoryId?: string;
   categoryName?: string; // Denormalized for display
   projectId?: string; // Null if shared expense
   projectName?: string; // Denormalized for display
-  employeeId?: string; // If salary payment
-  employeeName?: string; // Denormalized for display
   allocations?: IAllocation[]; // For shared expenses
   description?: string;
   notes?: string;
@@ -151,7 +141,7 @@ export interface ParsedTransactionData {
   currency: Currency;
   type: TransactionType;
   date: string; // ISO date string
-  merchantName?: string;
+  contactName?: string;
   suggestedCategoryId?: string;
   suggestedCategoryName?: string;
   suggestedProjectId?: string;
@@ -162,7 +152,7 @@ export interface ParsedTransactionData {
   rawExtracted: {
     amountString?: string;
     dateString?: string;
-    merchantString?: string;
+    contactString?: string;
   };
 }
 
@@ -172,7 +162,11 @@ export interface ParsedTransactionData {
 export interface ParseTransactionResponse {
   parsed: ParsedTransactionData;
   rawInputId: string;
-  existingMerchant?: IMerchant;
+  existingContact?: {
+    id: string;
+    name: string;
+    types: ContactType[];
+  };
   suggestedCategory?: ICategory;
   suggestedProject?: IProject;
 }
@@ -181,15 +175,14 @@ export interface ParseTransactionResponse {
  * Request to confirm/create transaction from parsed data
  */
 export interface CreateTransactionFromParsedRequest {
-  rawInputId: string;
+  rawInputId?: string;
   amount: number;
   currency: Currency;
   type: TransactionType;
   date: string;
-  merchantName: string;
+  contactName: string;
   categoryId?: string;
   projectId?: string;
-  employeeId?: string;
   allocations?: IAllocation[];
   description?: string;
   notes?: string;
@@ -204,12 +197,24 @@ export interface ParsedBulkTransaction {
   currency: Currency;
   type: TransactionType;
   date: string;
-  merchantName: string;
-  existingMerchantId?: string | null;
-  existingEmployeeId?: string | null;
+  contactName: string;
+  existingContactId?: string | null;
   suggestedCategoryId?: string | null;
   suggestedProjectId?: string | null;
   description?: string;
+}
+
+/**
+ * Contact info returned in parsing responses
+ */
+export interface ParsedContactInfo {
+  id: string;
+  name: string;
+  types: ContactType[];
+  aliases: string[];
+  role?: string;
+  monthlySalary?: number;
+  projectId?: string;
 }
 
 /**
@@ -222,7 +227,7 @@ export interface ParseBulkTransactionsResponse {
   rawInputId: string;
   categories: Array<{ id: string; name: string; type: TransactionType }>;
   projects: Array<{ id: string; name: string }>;
-  employees: Array<{ id: string; name: string; role: string; projectId?: string; monthlySalary: number }>;
+  contacts: ParsedContactInfo[];
 }
 
 /**
@@ -236,6 +241,7 @@ export interface ParseImageTransactionsResponse {
   rawInputId: string;
   categories: Array<{ id: string; name: string; type: TransactionType }>;
   projects: Array<{ id: string; name: string }>;
+  contacts: ParsedContactInfo[];
 }
 
 /**
@@ -258,7 +264,7 @@ export interface ParseTransactionInputResponse {
   rawInputId: string;
   categories: Array<{ id: string; name: string; type: TransactionType }>;
   projects: Array<{ id: string; name: string }>;
-  employees: Array<{ id: string; name: string; role: string; projectId?: string; monthlySalary: number }>;
+  contacts: ParsedContactInfo[];
 }
 
 /**
@@ -270,10 +276,9 @@ export interface CreateBulkTransactionsRequest {
     currency: Currency;
     type: TransactionType;
     date: string;
-    merchantName: string;
+    contactName: string;
     categoryId?: string;
     projectId?: string;
-    employeeId?: string;
     description?: string;
   }>;
   rawInputId?: string;
@@ -290,7 +295,7 @@ export interface CreateBulkTransactionsResponse {
     currency: Currency;
     type: TransactionType;
     date: string;
-    merchantName: string;
+    contactName: string;
   }>;
 }
 
@@ -313,10 +318,11 @@ export interface IProjectSummary {
     amount: number;
     percentage: number;
   }>;
-  topMerchants: Array<{
-    merchant: IMerchant;
+  topContacts: Array<{
+    id: string;
+    name: string;
     amount: number;
-    transactionCount: number;
+    count: number;
   }>;
   monthlyTrend: Array<{
     month: string; // YYYY-MM format
@@ -335,7 +341,7 @@ export interface IDashboardSummary {
   netAmount: number;
   transactionCount: number;
   projectCount: number;
-  merchantCount: number;
+  contactCount: number;
   employeeCount: number;
   recentTransactions: ITransaction[];
   projectSummaries: Array<{
@@ -366,8 +372,7 @@ export interface TransactionFilters {
   type?: TransactionType;
   projectId?: string;
   categoryId?: string;
-  merchantId?: string;
-  employeeId?: string;
+  contactId?: string;
   minAmount?: number;
   maxAmount?: number;
   searchQuery?: string;

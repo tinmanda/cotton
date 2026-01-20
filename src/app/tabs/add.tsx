@@ -100,7 +100,7 @@ export default function AddTransactionScreen() {
               currency: tx.currency,
               type: tx.type,
               date: tx.date,
-              merchantName: tx.merchantName,
+              contactName: tx.contactName,
               description: tx.description,
               confidence: result.data.confidence,
               needsReview: false,
@@ -215,7 +215,7 @@ export default function AddTransactionScreen() {
         currency: parsedResult.parsed.currency,
         type: parsedResult.parsed.type,
         date: parsedResult.parsed.date,
-        merchantName: parsedResult.parsed.merchantName || "Unknown",
+        contactName: parsedResult.parsed.contactName || "Unknown",
         categoryId: selectedCategoryId,
         projectId: selectedProjectId,
         description: parsedResult.parsed.description,
@@ -451,7 +451,7 @@ Examples:
                   {formatAmount(parsedResult.parsed.amount, parsedResult.parsed.currency)}
                 </Text>
                 <Text className="text-sm text-gray-500 mt-1">
-                  {parsedResult.parsed.merchantName}
+                  {parsedResult.parsed.contactName}
                 </Text>
               </View>
 

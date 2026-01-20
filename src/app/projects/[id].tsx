@@ -202,30 +202,30 @@ export default function ProjectDetailScreen() {
           </View>
         )}
 
-        {/* Top Merchants */}
-        {summary.topMerchants.length > 0 && (
+        {/* Top Contacts */}
+        {summary.topContacts && summary.topContacts.length > 0 && (
           <View className="px-4 mb-4">
             <Text className="text-base font-semibold text-gray-900 mb-3">
-              Top Merchants
+              Top Contacts
             </Text>
             <View style={styles.sectionCard} className="bg-white rounded-2xl overflow-hidden">
-              {summary.topMerchants.map((merchant, index) => (
+              {summary.topContacts.map((contact, index) => (
                 <View
-                  key={merchant.id}
+                  key={contact.id}
                   className={`flex-row items-center justify-between px-4 py-3 ${
-                    index < summary.topMerchants.length - 1 ? "border-b border-gray-100" : ""
+                    index < summary.topContacts.length - 1 ? "border-b border-gray-100" : ""
                   }`}
                 >
                   <View className="flex-1">
                     <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>
-                      {merchant.name}
+                      {contact.name}
                     </Text>
                     <Text className="text-xs text-gray-500 mt-0.5">
-                      {merchant.count} transactions
+                      {contact.count} transactions
                     </Text>
                   </View>
                   <Text className="text-sm font-semibold text-gray-900">
-                    {formatAmount(merchant.amount)}
+                    {formatAmount(contact.amount)}
                   </Text>
                 </View>
               ))}
@@ -271,7 +271,7 @@ export default function ProjectDetailScreen() {
                 >
                   <View className="flex-1">
                     <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>
-                      {t.merchantName || "Unknown"}
+                      {t.contactName || "Unknown"}
                     </Text>
                     <Text className="text-xs text-gray-500 mt-0.5">
                       {t.categoryName || "Uncategorized"}

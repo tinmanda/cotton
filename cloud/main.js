@@ -301,6 +301,36 @@ function setUserACL(object, user) {
   object.setACL(acl);
 }
 
+/**
+ * Transform Contact Parse object to plain object
+ */
+function transformContact(contact) {
+  return {
+    id: contact.id,
+    name: contact.get("name"),
+    types: contact.get("types") || [],
+    aliases: contact.get("aliases") || [],
+    email: contact.get("email"),
+    phone: contact.get("phone"),
+    company: contact.get("company"),
+    website: contact.get("website"),
+    notes: contact.get("notes"),
+    totalSpent: contact.get("totalSpent") || 0,
+    totalReceived: contact.get("totalReceived") || 0,
+    transactionCount: contact.get("transactionCount") || 0,
+    defaultCategoryId: contact.get("defaultCategory")?.id,
+    // Employee-specific fields
+    role: contact.get("role"),
+    monthlySalary: contact.get("monthlySalary"),
+    salaryCurrency: contact.get("salaryCurrency"),
+    employeeStatus: contact.get("employeeStatus"),
+    projectId: contact.get("project")?.id,
+    projectName: contact.get("project")?.get("name"),
+    createdAt: contact.createdAt,
+    updatedAt: contact.updatedAt,
+  };
+}
+
 // ============================================
 // OTP Authentication Cloud Functions
 // ============================================
@@ -634,146 +664,113 @@ Parse.Cloud.define("updateProject", async (request) => {
 });
 
 // ============================================
-// Employee Cloud Functions
+// Contact Cloud Functions (Unified: Customer/Supplier/Employee)
 // ============================================
 
-Parse.Cloud.define("createEmployee", async (request) => {
+Parse.Cloud.define("createContact", async (request) => {
   const user = requireUser(request);
-  const { name, role, projectId, monthlySalary, currency, email, phone, notes } = request.params;
+  const {
+    name,
+    types,
+    aliases,
+    email,
+    phone,
+    company,
+    website,
+    notes,
+    defaultCategoryId,
+    // Employee-specific fields
+    role,
+    monthlySalary,
+    salaryCurrency,
+    projectId,
+  } = request.params;
 
-  if (!name || !role || !projectId || monthlySalary === undefined) {
-    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Name, role, project, and salary are required");
+  if (!name || !types || !Array.isArray(types) || types.length === 0) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Name and at least one type are required");
   }
 
-  // Verify project exists and belongs to user
-  const projectQuery = new Parse.Query("Project");
-  projectQuery.equalTo("user", user);
-  const project = await projectQuery.get(projectId, { useMasterKey: true });
+  // Validate types
+  const validTypes = ["customer", "supplier", "employee"];
+  for (const t of types) {
+    if (!validTypes.includes(t)) {
+      throw new Parse.Error(Parse.Error.INVALID_QUERY, `Invalid contact type: ${t}`);
+    }
+  }
 
-  const Employee = Parse.Object.extend("Employee");
-  const employee = new Employee();
-  employee.set("name", name.trim());
-  employee.set("role", role.trim());
-  employee.set("project", project);
-  employee.set("monthlySalary", monthlySalary);
-  employee.set("currency", currency || "INR");
-  employee.set("status", "active");
-  employee.set("email", email || "");
-  employee.set("phone", phone || "");
-  employee.set("notes", notes || "");
-  employee.set("user", user);
-  setUserACL(employee, user);
+  // If employee type, require project
+  const isEmployee = types.includes("employee");
+  if (isEmployee && !projectId) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Project is required for employee contacts");
+  }
 
-  await employee.save(null, { useMasterKey: true });
-  console.log(`[createEmployee] Created employee ${employee.id} for project ${projectId}`);
+  const Contact = Parse.Object.extend("Contact");
+  const contact = new Contact();
+  contact.set("name", name.trim());
+  contact.set("types", types);
+  contact.set("aliases", aliases || []);
+  contact.set("email", email || "");
+  contact.set("phone", phone || "");
+  contact.set("company", company || "");
+  contact.set("website", website || "");
+  contact.set("notes", notes || "");
+  contact.set("totalSpent", 0);
+  contact.set("totalReceived", 0);
+  contact.set("transactionCount", 0);
+  contact.set("user", user);
 
-  return {
-    id: employee.id,
-    name: employee.get("name"),
-    role: employee.get("role"),
-    projectId: project.id,
-    monthlySalary: employee.get("monthlySalary"),
-    currency: employee.get("currency"),
-    status: employee.get("status"),
-    email: employee.get("email"),
-    phone: employee.get("phone"),
-    notes: employee.get("notes"),
-    createdAt: employee.createdAt,
-    updatedAt: employee.updatedAt,
-  };
+  if (defaultCategoryId) {
+    const catPointer = Parse.Object.extend("Category").createWithoutData(defaultCategoryId);
+    contact.set("defaultCategory", catPointer);
+  }
+
+  // Employee-specific fields
+  if (isEmployee) {
+    contact.set("role", role || "Employee");
+    contact.set("monthlySalary", monthlySalary || 0);
+    contact.set("salaryCurrency", salaryCurrency || "INR");
+    contact.set("employeeStatus", "active");
+
+    const projQuery = new Parse.Query("Project");
+    projQuery.equalTo("user", user);
+    const project = await projQuery.get(projectId, { useMasterKey: true });
+    contact.set("project", project);
+  }
+
+  setUserACL(contact, user);
+  await contact.save(null, { useMasterKey: true });
+
+  console.log(`[createContact] Created contact ${contact.id} (types: ${types.join(", ")}) for user ${user.id}`);
+
+  return transformContact(contact);
 });
 
-Parse.Cloud.define("getEmployees", async (request) => {
+Parse.Cloud.define("getContacts", async (request) => {
   const user = requireUser(request);
-  const { projectId, status } = request.params;
+  const { type, projectId, employeeStatus, search, limit } = request.params;
 
-  const query = new Parse.Query("Employee");
+  const query = new Parse.Query("Contact");
   query.equalTo("user", user);
   query.include("project");
+  query.include("defaultCategory");
 
+  // Filter by type if specified
+  if (type) {
+    query.equalTo("types", type);
+  }
+
+  // Filter by project (for employees)
   if (projectId) {
-    const projectPointer = Parse.Object.extend("Project").createWithoutData(projectId);
-    query.equalTo("project", projectPointer);
-  }
-  if (status) {
-    query.equalTo("status", status);
-  }
-  query.ascending("name");
-
-  const results = await query.find({ useMasterKey: true });
-  return results.map((emp) => ({
-    id: emp.id,
-    name: emp.get("name"),
-    role: emp.get("role"),
-    projectId: emp.get("project")?.id,
-    projectName: emp.get("project")?.get("name"),
-    monthlySalary: emp.get("monthlySalary"),
-    currency: emp.get("currency"),
-    status: emp.get("status"),
-    email: emp.get("email"),
-    phone: emp.get("phone"),
-    notes: emp.get("notes"),
-    createdAt: emp.createdAt,
-    updatedAt: emp.updatedAt,
-  }));
-});
-
-Parse.Cloud.define("updateEmployee", async (request) => {
-  const user = requireUser(request);
-  const { employeeId, name, role, projectId, monthlySalary, currency, status, email, phone, notes } = request.params;
-
-  if (!employeeId) {
-    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Employee ID is required");
+    const projPointer = Parse.Object.extend("Project").createWithoutData(projectId);
+    query.equalTo("project", projPointer);
   }
 
-  const query = new Parse.Query("Employee");
-  query.equalTo("user", user);
-  const employee = await query.get(employeeId, { useMasterKey: true });
-
-  if (name) employee.set("name", name.trim());
-  if (role) employee.set("role", role.trim());
-  if (projectId) {
-    const projectQuery = new Parse.Query("Project");
-    projectQuery.equalTo("user", user);
-    const project = await projectQuery.get(projectId, { useMasterKey: true });
-    employee.set("project", project);
+  // Filter by employee status
+  if (employeeStatus) {
+    query.equalTo("employeeStatus", employeeStatus);
   }
-  if (monthlySalary !== undefined) employee.set("monthlySalary", monthlySalary);
-  if (currency) employee.set("currency", currency);
-  if (status) employee.set("status", status);
-  if (email !== undefined) employee.set("email", email);
-  if (phone !== undefined) employee.set("phone", phone);
-  if (notes !== undefined) employee.set("notes", notes);
 
-  await employee.save(null, { useMasterKey: true });
-
-  return {
-    id: employee.id,
-    name: employee.get("name"),
-    role: employee.get("role"),
-    projectId: employee.get("project")?.id,
-    monthlySalary: employee.get("monthlySalary"),
-    currency: employee.get("currency"),
-    status: employee.get("status"),
-    email: employee.get("email"),
-    phone: employee.get("phone"),
-    notes: employee.get("notes"),
-    createdAt: employee.createdAt,
-    updatedAt: employee.updatedAt,
-  };
-});
-
-// ============================================
-// Merchant Cloud Functions
-// ============================================
-
-Parse.Cloud.define("getMerchants", async (request) => {
-  const user = requireUser(request);
-  const { search, limit } = request.params;
-
-  const query = new Parse.Query("Merchant");
-  query.equalTo("user", user);
-
+  // Search by name
   if (search) {
     query.matches("name", new RegExp(search, "i"));
   }
@@ -782,104 +779,111 @@ Parse.Cloud.define("getMerchants", async (request) => {
   query.limit(limit || 100);
 
   const results = await query.find({ useMasterKey: true });
-  return results.map((m) => ({
-    id: m.id,
-    name: m.get("name"),
-    aliases: m.get("aliases") || [],
-    defaultCategoryId: m.get("defaultCategory")?.id,
-    defaultProjectId: m.get("defaultProject")?.id,
-    website: m.get("website"),
-    notes: m.get("notes"),
-    totalSpent: m.get("totalSpent"),
-    totalReceived: m.get("totalReceived"),
-    transactionCount: m.get("transactionCount"),
-    createdAt: m.createdAt,
-    updatedAt: m.updatedAt,
-  }));
+  return results.map(transformContact);
 });
 
-Parse.Cloud.define("updateMerchant", async (request) => {
+Parse.Cloud.define("updateContact", async (request) => {
   const user = requireUser(request);
-  const { merchantId, name, aliases, defaultCategoryId, defaultProjectId, website, notes } = request.params;
+  const {
+    contactId,
+    name,
+    types,
+    aliases,
+    email,
+    phone,
+    company,
+    website,
+    notes,
+    defaultCategoryId,
+    // Employee-specific fields
+    role,
+    monthlySalary,
+    salaryCurrency,
+    employeeStatus,
+    projectId,
+  } = request.params;
 
-  if (!merchantId) {
-    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Merchant ID is required");
+  if (!contactId) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Contact ID is required");
   }
 
-  const query = new Parse.Query("Merchant");
+  const query = new Parse.Query("Contact");
   query.equalTo("user", user);
-  const merchant = await query.get(merchantId, { useMasterKey: true });
+  query.include("project");
+  const contact = await query.get(contactId, { useMasterKey: true });
 
-  if (name) merchant.set("name", name.trim());
-  if (aliases) merchant.set("aliases", aliases);
+  if (name) contact.set("name", name.trim());
+  if (types && Array.isArray(types)) contact.set("types", types);
+  if (aliases !== undefined) contact.set("aliases", aliases);
+  if (email !== undefined) contact.set("email", email);
+  if (phone !== undefined) contact.set("phone", phone);
+  if (company !== undefined) contact.set("company", company);
+  if (website !== undefined) contact.set("website", website);
+  if (notes !== undefined) contact.set("notes", notes);
+
+  // Handle default category
   if (defaultCategoryId !== undefined) {
     if (defaultCategoryId) {
       const catPointer = Parse.Object.extend("Category").createWithoutData(defaultCategoryId);
-      merchant.set("defaultCategory", catPointer);
+      contact.set("defaultCategory", catPointer);
     } else {
-      merchant.unset("defaultCategory");
+      contact.unset("defaultCategory");
     }
   }
-  if (defaultProjectId !== undefined) {
-    if (defaultProjectId) {
-      const projPointer = Parse.Object.extend("Project").createWithoutData(defaultProjectId);
-      merchant.set("defaultProject", projPointer);
+
+  // Employee-specific fields
+  if (role !== undefined) contact.set("role", role);
+  if (monthlySalary !== undefined) contact.set("monthlySalary", monthlySalary);
+  if (salaryCurrency) contact.set("salaryCurrency", salaryCurrency);
+  if (employeeStatus) contact.set("employeeStatus", employeeStatus);
+
+  if (projectId !== undefined) {
+    if (projectId) {
+      const projQuery = new Parse.Query("Project");
+      projQuery.equalTo("user", user);
+      const project = await projQuery.get(projectId, { useMasterKey: true });
+      contact.set("project", project);
     } else {
-      merchant.unset("defaultProject");
+      contact.unset("project");
     }
   }
-  if (website !== undefined) merchant.set("website", website);
-  if (notes !== undefined) merchant.set("notes", notes);
 
-  await merchant.save(null, { useMasterKey: true });
+  await contact.save(null, { useMasterKey: true });
 
-  return {
-    id: merchant.id,
-    name: merchant.get("name"),
-    aliases: merchant.get("aliases") || [],
-    defaultCategoryId: merchant.get("defaultCategory")?.id,
-    defaultProjectId: merchant.get("defaultProject")?.id,
-    website: merchant.get("website"),
-    notes: merchant.get("notes"),
-    totalSpent: merchant.get("totalSpent"),
-    totalReceived: merchant.get("totalReceived"),
-    transactionCount: merchant.get("transactionCount"),
-    createdAt: merchant.createdAt,
-    updatedAt: merchant.updatedAt,
-  };
+  return transformContact(contact);
 });
 
-Parse.Cloud.define("deleteMerchant", async (request) => {
+Parse.Cloud.define("deleteContact", async (request) => {
   const user = requireUser(request);
-  const { merchantId } = request.params;
+  const { contactId } = request.params;
 
-  if (!merchantId) {
-    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Merchant ID is required");
+  if (!contactId) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Contact ID is required");
   }
 
-  // Get merchant
-  const merchantQuery = new Parse.Query("Merchant");
-  merchantQuery.equalTo("user", user);
-  const merchant = await merchantQuery.get(merchantId, { useMasterKey: true });
+  // Get contact
+  const contactQuery = new Parse.Query("Contact");
+  contactQuery.equalTo("user", user);
+  const contact = await contactQuery.get(contactId, { useMasterKey: true });
 
-  // Check if there are transactions associated with this merchant
+  // Check if there are transactions associated with this contact
   const transactionQuery = new Parse.Query("Transaction");
   transactionQuery.equalTo("user", user);
-  transactionQuery.equalTo("merchant", merchant);
+  transactionQuery.equalTo("contact", contact);
   const transactionCount = await transactionQuery.count({ useMasterKey: true });
 
   if (transactionCount > 0) {
     throw new Parse.Error(
       Parse.Error.VALIDATION_ERROR,
-      `Cannot delete merchant: ${transactionCount} transaction(s) are associated with this merchant. Please delete or reassign those transactions first.`
+      `Cannot delete contact: ${transactionCount} transaction(s) are associated with this contact. Please delete or reassign those transactions first.`
     );
   }
 
-  // Delete the merchant
-  await merchant.destroy({ useMasterKey: true });
-  console.log(`[deleteMerchant] Deleted merchant ${merchantId} for user ${user.id}`);
+  // Delete the contact
+  await contact.destroy({ useMasterKey: true });
+  console.log(`[deleteContact] Deleted contact ${contactId} for user ${user.id}`);
 
-  return { success: true, deletedId: merchantId };
+  return { success: true, deletedId: contactId };
 });
 
 // ============================================
@@ -894,14 +898,22 @@ Parse.Cloud.define("parseTransaction", async (request) => {
     throw new Parse.Error(Parse.Error.INVALID_QUERY, "Text is required");
   }
 
-  // Get user's existing merchants, categories, and projects for context
-  const [merchants, categories, projects] = await Promise.all([
-    new Parse.Query("Merchant").equalTo("user", user).find({ useMasterKey: true }),
+  // Get user's existing contacts, categories, and projects for context
+  const [contacts, categories, projects] = await Promise.all([
+    new Parse.Query("Contact").equalTo("user", user).include("project").find({ useMasterKey: true }),
     new Parse.Query("Category").equalTo("user", user).find({ useMasterKey: true }),
     new Parse.Query("Project").equalTo("user", user).find({ useMasterKey: true }),
   ]);
 
-  const merchantList = merchants.map((m) => ({ id: m.id, name: m.get("name"), aliases: m.get("aliases") || [] }));
+  const contactList = contacts.map((c) => ({
+    id: c.id,
+    name: c.get("name"),
+    types: c.get("types") || [],
+    aliases: c.get("aliases") || [],
+    role: c.get("role"),
+    monthlySalary: c.get("monthlySalary"),
+    projectId: c.get("project")?.id,
+  }));
   const categoryList = categories.map((c) => ({ id: c.id, name: c.get("name"), type: c.get("type") }));
   const projectList = projects.map((p) => ({ id: p.id, name: p.get("name") }));
 
@@ -909,19 +921,20 @@ Parse.Cloud.define("parseTransaction", async (request) => {
 Your job is to extract transaction details from raw text (SMS alerts, emails, invoices, manual notes).
 
 CONTEXT:
-- User's existing merchants: ${JSON.stringify(merchantList)}
+- User's existing contacts (customers, suppliers, employees): ${JSON.stringify(contactList)}
 - User's categories: ${JSON.stringify(categoryList)}
 - User's projects: ${JSON.stringify(projectList)}
 
 RULES:
-1. Extract: amount, currency (INR or USD), type (income/expense), date, merchant name
-2. If merchant matches an existing one (or alias), use that merchant's ID
-3. Suggest the most appropriate category based on merchant/context
+1. Extract: amount, currency (INR or USD), type (income/expense), date, contact name
+2. If contact matches an existing one (or alias), use that contact's ID
+3. Suggest the most appropriate category based on contact/context
 4. Suggest the most appropriate project if you can infer it
 5. For bank debits, UPI payments, card charges = expense
 6. For credits, refunds, payments received = income
 7. Default to today's date if not specified
 8. Default to INR if currency unclear
+9. For salary-related transactions, look for employee contacts
 
 RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
 {
@@ -929,8 +942,8 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
   "currency": "INR" | "USD",
   "type": "income" | "expense",
   "date": "YYYY-MM-DD",
-  "merchantName": "string",
-  "existingMerchantId": "string or null",
+  "contactName": "string",
+  "existingContactId": "string or null",
   "suggestedCategoryId": "string or null",
   "suggestedProjectId": "string or null",
   "description": "brief description",
@@ -939,7 +952,7 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
   "rawExtracted": {
     "amountString": "original amount text",
     "dateString": "original date text or null",
-    "merchantString": "original merchant text"
+    "contactString": "original contact/merchant text"
   }
 }`;
 
@@ -965,15 +978,15 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
   setUserACL(rawInput, user);
   await rawInput.save(null, { useMasterKey: true });
 
-  // Find existing merchant if ID was suggested
-  let existingMerchant = null;
-  if (parsedData.existingMerchantId) {
-    const merchantQuery = new Parse.Query("Merchant");
-    merchantQuery.equalTo("user", user);
+  // Find existing contact if ID was suggested
+  let existingContact = null;
+  if (parsedData.existingContactId) {
+    const contactQuery = new Parse.Query("Contact");
+    contactQuery.equalTo("user", user);
     try {
-      existingMerchant = await merchantQuery.get(parsedData.existingMerchantId, { useMasterKey: true });
+      existingContact = await contactQuery.get(parsedData.existingContactId, { useMasterKey: true });
     } catch (e) {
-      // Merchant not found, ignore
+      // Contact not found, ignore
     }
   }
 
@@ -1006,9 +1019,10 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
   return {
     parsed: parsedData,
     rawInputId: rawInput.id,
-    existingMerchant: existingMerchant ? {
-      id: existingMerchant.id,
-      name: existingMerchant.get("name"),
+    existingContact: existingContact ? {
+      id: existingContact.id,
+      name: existingContact.get("name"),
+      types: existingContact.get("types") || [],
     } : null,
     suggestedCategory: suggestedCategory ? {
       id: suggestedCategory.id,
@@ -1037,24 +1051,24 @@ Parse.Cloud.define("parseBulkTransactions", async (request) => {
     throw new Parse.Error(Parse.Error.INVALID_QUERY, "Text is required");
   }
 
-  // Get user's existing merchants, categories, projects, and employees for context
-  const [merchants, categories, projects, employees] = await Promise.all([
-    new Parse.Query("Merchant").equalTo("user", user).find({ useMasterKey: true }),
+  // Get user's existing contacts, categories, and projects for context
+  const [contacts, categories, projects] = await Promise.all([
+    new Parse.Query("Contact").equalTo("user", user).include("project").find({ useMasterKey: true }),
     new Parse.Query("Category").equalTo("user", user).find({ useMasterKey: true }),
     new Parse.Query("Project").equalTo("user", user).find({ useMasterKey: true }),
-    new Parse.Query("Employee").equalTo("user", user).find({ useMasterKey: true }),
   ]);
 
-  const merchantList = merchants.map((m) => ({ id: m.id, name: m.get("name"), aliases: m.get("aliases") || [] }));
+  const contactList = contacts.map((c) => ({
+    id: c.id,
+    name: c.get("name"),
+    types: c.get("types") || [],
+    aliases: c.get("aliases") || [],
+    role: c.get("role"),
+    monthlySalary: c.get("monthlySalary"),
+    projectId: c.get("project")?.id,
+  }));
   const categoryList = categories.map((c) => ({ id: c.id, name: c.get("name"), type: c.get("type") }));
   const projectList = projects.map((p) => ({ id: p.id, name: p.get("name") }));
-  const employeeList = employees.map((e) => ({
-    id: e.id,
-    name: e.get("name"),
-    role: e.get("role"),
-    projectId: e.get("project")?.id,
-    monthlySalary: e.get("monthlySalary")
-  }));
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -1062,21 +1076,20 @@ Parse.Cloud.define("parseBulkTransactions", async (request) => {
 Your job is to extract MULTIPLE transactions from text that may describe recurring payments, salary histories, or bulk entries.
 
 CONTEXT:
-- User's existing merchants: ${JSON.stringify(merchantList)}
+- User's existing contacts (customers, suppliers, employees): ${JSON.stringify(contactList)}
 - User's categories: ${JSON.stringify(categoryList)}
 - User's projects: ${JSON.stringify(projectList)}
-- User's employees: ${JSON.stringify(employeeList)}
 - Today's date: ${today}
 
 RULES:
 1. Parse text that describes multiple transactions over time (e.g., "Ajay salary was 30K for Jan-Jun, then 60K for Jul-Oct")
 2. Generate one transaction per period mentioned (e.g., 6 transactions for Jan-Jun at 30K each)
-3. For salary payments, match to existing employees if possible
+3. For salary payments, match to existing employee contacts if possible
 4. Use the last day of each month for salary transactions
 5. Default currency is INR unless specified
 6. For ranges like "Jan-Jun 2025", create transactions for Jan 31, Feb 28, Mar 31, Apr 30, May 31, Jun 30
 7. If year not specified, use current year or infer from context
-8. Match merchants/employees by name (case-insensitive, partial match OK)
+8. Match contacts by name (case-insensitive, partial match OK)
 
 RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
 {
@@ -1086,9 +1099,8 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
       "currency": "INR" | "USD",
       "type": "income" | "expense",
       "date": "YYYY-MM-DD",
-      "merchantName": "string (use employee name for salaries)",
-      "existingMerchantId": "string or null",
-      "existingEmployeeId": "string or null",
+      "contactName": "string (use employee/supplier/customer name)",
+      "existingContactId": "string or null",
       "suggestedCategoryId": "string or null",
       "suggestedProjectId": "string or null",
       "description": "brief description (e.g., 'January 2025 salary')"
@@ -1135,7 +1147,7 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
     rawInputId: rawInput.id,
     categories: categoryList,
     projects: projectList,
-    employees: employeeList,
+    contacts: contactList,
   };
 });
 
@@ -1148,13 +1160,18 @@ Parse.Cloud.define("parseTransactionFromImage", async (request) => {
   }
 
   // Get user's existing data for context
-  const [merchants, categories, projects] = await Promise.all([
-    new Parse.Query("Merchant").equalTo("user", user).find({ useMasterKey: true }),
+  const [contacts, categories, projects] = await Promise.all([
+    new Parse.Query("Contact").equalTo("user", user).include("project").find({ useMasterKey: true }),
     new Parse.Query("Category").equalTo("user", user).find({ useMasterKey: true }),
     new Parse.Query("Project").equalTo("user", user).find({ useMasterKey: true }),
   ]);
 
-  const merchantList = merchants.map((m) => ({ id: m.id, name: m.get("name"), aliases: m.get("aliases") || [] }));
+  const contactList = contacts.map((c) => ({
+    id: c.id,
+    name: c.get("name"),
+    types: c.get("types") || [],
+    aliases: c.get("aliases") || [],
+  }));
   const categoryList = categories.map((c) => ({ id: c.id, name: c.get("name"), type: c.get("type") }));
   const projectList = projects.map((p) => ({ id: p.id, name: p.get("name") }));
 
@@ -1164,7 +1181,7 @@ Parse.Cloud.define("parseTransactionFromImage", async (request) => {
 Your job is to extract transactions from images of receipts, invoices, bank statements, or any financial document.
 
 CONTEXT:
-- User's existing merchants: ${JSON.stringify(merchantList)}
+- User's existing contacts (customers, suppliers, employees): ${JSON.stringify(contactList)}
 - User's categories: ${JSON.stringify(categoryList)}
 - User's projects: ${JSON.stringify(projectList)}
 - Today's date: ${today}
@@ -1173,9 +1190,9 @@ RULES:
 1. Extract ALL transactions visible in the image
 2. For bank statements, extract each line item as a separate transaction
 3. For receipts/invoices, extract the total as one transaction (or line items if clearly listed)
-4. Identify: amount, currency, date, merchant/vendor name, description
-5. Match merchants to existing ones if possible (use aliases for matching)
-6. Suggest appropriate categories based on merchant/description
+4. Identify: amount, currency, date, contact/vendor name, description
+5. Match contacts to existing ones if possible (use aliases for matching)
+6. Suggest appropriate categories based on contact/description
 7. Default currency: INR (unless clearly USD, EUR, etc.)
 8. If date not visible, use today's date
 9. For debits/payments = expense, for credits/receipts = income
@@ -1188,8 +1205,8 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
       "currency": "INR" | "USD",
       "type": "income" | "expense",
       "date": "YYYY-MM-DD",
-      "merchantName": "string",
-      "existingMerchantId": "string or null",
+      "contactName": "string",
+      "existingContactId": "string or null",
       "suggestedCategoryId": "string or null",
       "suggestedProjectId": "string or null",
       "description": "brief description"
@@ -1243,6 +1260,7 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
     rawInputId: rawInput.id,
     categories: categoryList,
     projects: projectList,
+    contacts: contactList,
   };
 });
 
@@ -1268,23 +1286,23 @@ Parse.Cloud.define("parseTransactionInput", async (request) => {
   }
 
   // Get user's existing data for context
-  const [merchants, categories, projects, employees] = await Promise.all([
-    new Parse.Query("Merchant").equalTo("user", user).find({ useMasterKey: true }),
+  const [contacts, categories, projects] = await Promise.all([
+    new Parse.Query("Contact").equalTo("user", user).include("project").find({ useMasterKey: true }),
     new Parse.Query("Category").equalTo("user", user).find({ useMasterKey: true }),
     new Parse.Query("Project").equalTo("user", user).find({ useMasterKey: true }),
-    new Parse.Query("Employee").equalTo("user", user).find({ useMasterKey: true }),
   ]);
 
-  const merchantList = merchants.map((m) => ({ id: m.id, name: m.get("name"), aliases: m.get("aliases") || [] }));
+  const contactList = contacts.map((c) => ({
+    id: c.id,
+    name: c.get("name"),
+    types: c.get("types") || [],
+    aliases: c.get("aliases") || [],
+    role: c.get("role"),
+    monthlySalary: c.get("monthlySalary"),
+    projectId: c.get("project")?.id,
+  }));
   const categoryList = categories.map((c) => ({ id: c.id, name: c.get("name"), type: c.get("type") }));
   const projectList = projects.map((p) => ({ id: p.id, name: p.get("name") }));
-  const employeeList = employees.map((e) => ({
-    id: e.id,
-    name: e.get("name"),
-    role: e.get("role"),
-    projectId: e.get("project")?.id,
-    monthlySalary: e.get("monthlySalary")
-  }));
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -1293,10 +1311,9 @@ Parse.Cloud.define("parseTransactionInput", async (request) => {
 Your job is to extract MULTIPLE transactions from the provided input (text, images, or both).
 
 CONTEXT:
-- User's existing merchants: ${JSON.stringify(merchantList)}
+- User's existing contacts (customers, suppliers, employees): ${JSON.stringify(contactList)}
 - User's categories: ${JSON.stringify(categoryList)}
 - User's projects: ${JSON.stringify(projectList)}
-- User's employees: ${JSON.stringify(employeeList)}
 - Today's date: ${today}
 
 INPUT TYPES YOU MAY RECEIVE:
@@ -1309,10 +1326,10 @@ RULES:
 2. For text describing multiple transactions over time (e.g., "Ajay salary was 30K for Jan-Jun, then 60K for Jul-Oct"), generate one transaction per period
 3. For images with multiple line items, extract each as a separate transaction
 4. If the user provides context text along with images, use that context to better categorize and understand the transactions
-5. For salary payments, match to existing employees if possible
+5. For salary payments, match to existing employee contacts if possible
 6. Use the last day of each month for salary transactions
 7. Default currency is INR unless specified
-8. Match merchants/employees by name (case-insensitive, partial match OK)
+8. Match contacts by name (case-insensitive, partial match OK)
 9. For debits/payments = expense, for credits/receipts = income
 10. If date not visible or specified, use today's date
 
@@ -1324,9 +1341,8 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
       "currency": "INR" | "USD",
       "type": "income" | "expense",
       "date": "YYYY-MM-DD",
-      "merchantName": "string (use employee name for salaries)",
-      "existingMerchantId": "string or null",
-      "existingEmployeeId": "string or null",
+      "contactName": "string (use employee/supplier/customer name)",
+      "existingContactId": "string or null",
       "suggestedCategoryId": "string or null",
       "suggestedProjectId": "string or null",
       "description": "brief description"
@@ -1399,7 +1415,7 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
     rawInputId: rawInput.id,
     categories: categoryList,
     projects: projectList,
-    employees: employeeList,
+    contacts: contactList,
   };
 });
 
@@ -1419,35 +1435,36 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
       currency,
       type,
       date,
-      merchantName,
+      contactName,
       categoryId,
       projectId,
-      employeeId,
       description,
     } = txData;
 
-    if (!amount || !currency || !type || !date || !merchantName) {
+    if (!amount || !currency || !type || !date || !contactName) {
       continue; // Skip invalid transactions
     }
 
-    // Find or create merchant
-    let merchant;
-    const merchantQuery = new Parse.Query("Merchant");
-    merchantQuery.equalTo("user", user);
-    merchantQuery.equalTo("name", merchantName.trim());
-    merchant = await merchantQuery.first({ useMasterKey: true });
+    // Find or create contact
+    let contact;
+    const contactQuery = new Parse.Query("Contact");
+    contactQuery.equalTo("user", user);
+    contactQuery.equalTo("name", contactName.trim());
+    contact = await contactQuery.first({ useMasterKey: true });
 
-    if (!merchant) {
-      const Merchant = Parse.Object.extend("Merchant");
-      merchant = new Merchant();
-      merchant.set("name", merchantName.trim());
-      merchant.set("aliases", []);
-      merchant.set("totalSpent", 0);
-      merchant.set("totalReceived", 0);
-      merchant.set("transactionCount", 0);
-      merchant.set("user", user);
-      setUserACL(merchant, user);
-      await merchant.save(null, { useMasterKey: true });
+    if (!contact) {
+      const Contact = Parse.Object.extend("Contact");
+      contact = new Contact();
+      contact.set("name", contactName.trim());
+      // Default to supplier for expenses, customer for income
+      contact.set("types", type === "expense" ? ["supplier"] : ["customer"]);
+      contact.set("aliases", []);
+      contact.set("totalSpent", 0);
+      contact.set("totalReceived", 0);
+      contact.set("transactionCount", 0);
+      contact.set("user", user);
+      setUserACL(contact, user);
+      await contact.save(null, { useMasterKey: true });
     }
 
     // Create transaction
@@ -1459,8 +1476,8 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
     transaction.set("amountINR", await convertToINR(amount, currency, transactionDate));
     transaction.set("type", type);
     transaction.set("date", transactionDate);
-    transaction.set("merchant", merchant);
-    transaction.set("merchantName", merchantName.trim());
+    transaction.set("contact", contact);
+    transaction.set("contactName", contactName.trim());
     transaction.set("user", user);
     transaction.set("isRecurring", false);
 
@@ -1491,42 +1508,21 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
       }
     }
 
-    // Handle employee - either use provided employeeId or auto-create for salary payments
-    let employee = null;
-    if (employeeId) {
-      const empQuery = new Parse.Query("Employee");
-      empQuery.equalTo("user", user);
-      try {
-        employee = await empQuery.get(employeeId, { useMasterKey: true });
-      } catch (e) {
-        // Employee not found, skip
+    // Auto-update contact to employee for salary payments
+    if (isSalaryPayment && !(contact.get("types") || []).includes("employee")) {
+      const types = contact.get("types") || [];
+      types.push("employee");
+      contact.set("types", types);
+      contact.set("role", contact.get("role") || "Employee");
+      contact.set("monthlySalary", amount);
+      contact.set("salaryCurrency", currency);
+      contact.set("employeeStatus", "active");
+      if (projectId) {
+        const projPointer = Parse.Object.extend("Project").createWithoutData(projectId);
+        contact.set("project", projPointer);
       }
-    } else if (isSalaryPayment && merchantName) {
-      // Auto-create employee for salary payments
-      const empQuery = new Parse.Query("Employee");
-      empQuery.equalTo("user", user);
-      empQuery.equalTo("name", merchantName.trim());
-      employee = await empQuery.first({ useMasterKey: true });
-
-      if (!employee) {
-        // Create new employee
-        const Employee = Parse.Object.extend("Employee");
-        employee = new Employee();
-        employee.set("name", merchantName.trim());
-        employee.set("role", "Employee");
-        employee.set("monthlySalary", amount);
-        employee.set("currency", currency);
-        employee.set("status", "active");
-        employee.set("user", user);
-        setUserACL(employee, user);
-        await employee.save(null, { useMasterKey: true });
-        console.log(`[createBulkTransactions] Auto-created employee: ${employee.id} - ${merchantName}`);
-      }
-    }
-
-    if (employee) {
-      transaction.set("employee", employee);
-      transaction.set("employeeName", employee.get("name"));
+      await contact.save(null, { useMasterKey: true });
+      console.log(`[createBulkTransactions] Auto-added employee type to contact: ${contact.id} - ${contactName}`);
     }
 
     if (description) {
@@ -1541,14 +1537,14 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
     setUserACL(transaction, user);
     await transaction.save(null, { useMasterKey: true });
 
-    // Update merchant totals
+    // Update contact totals
     if (type === "expense") {
-      merchant.increment("totalSpent", amount);
+      contact.increment("totalSpent", amount);
     } else {
-      merchant.increment("totalReceived", amount);
+      contact.increment("totalReceived", amount);
     }
-    merchant.increment("transactionCount", 1);
-    await merchant.save(null, { useMasterKey: true });
+    contact.increment("transactionCount", 1);
+    await contact.save(null, { useMasterKey: true });
 
     createdTransactions.push({
       id: transaction.id,
@@ -1556,7 +1552,7 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
       currency,
       type,
       date,
-      merchantName: merchantName.trim(),
+      contactName: contactName.trim(),
     });
   }
 
@@ -1589,62 +1585,56 @@ Parse.Cloud.define("createTransactionFromParsed", async (request) => {
     currency,
     type,
     date,
-    merchantName,
+    contactName,
     categoryId,
     projectId,
-    employeeId,
     allocations,
     description,
     notes,
     isRecurring,
   } = request.params;
 
-  if (!amount || !currency || !type || !date || !merchantName) {
+  if (!amount || !currency || !type || !date || !contactName) {
     throw new Parse.Error(
       Parse.Error.INVALID_QUERY,
-      "Amount, currency, type, date, and merchant name are required"
+      "Amount, currency, type, date, and contact name are required"
     );
   }
 
-  // Find or create merchant
-  let merchant;
-  const merchantQuery = new Parse.Query("Merchant");
-  merchantQuery.equalTo("user", user);
-  merchantQuery.equalTo("name", merchantName.trim());
-  merchant = await merchantQuery.first({ useMasterKey: true });
+  // Find or create contact
+  let contact;
+  const contactQuery = new Parse.Query("Contact");
+  contactQuery.equalTo("user", user);
+  contactQuery.equalTo("name", contactName.trim());
+  contact = await contactQuery.first({ useMasterKey: true });
 
-  if (!merchant) {
-    // Create new merchant
-    const Merchant = Parse.Object.extend("Merchant");
-    merchant = new Merchant();
-    merchant.set("name", merchantName.trim());
-    merchant.set("aliases", []);
-    merchant.set("totalSpent", 0);
-    merchant.set("totalReceived", 0);
-    merchant.set("transactionCount", 0);
-    merchant.set("user", user);
-    setUserACL(merchant, user);
+  if (!contact) {
+    // Create new contact
+    const Contact = Parse.Object.extend("Contact");
+    contact = new Contact();
+    contact.set("name", contactName.trim());
+    // Default to supplier for expenses, customer for income
+    contact.set("types", type === "expense" ? ["supplier"] : ["customer"]);
+    contact.set("aliases", []);
+    contact.set("totalSpent", 0);
+    contact.set("totalReceived", 0);
+    contact.set("transactionCount", 0);
+    contact.set("user", user);
+    setUserACL(contact, user);
 
     // Set default category if provided
     if (categoryId) {
       const catPointer = Parse.Object.extend("Category").createWithoutData(categoryId);
-      merchant.set("defaultCategory", catPointer);
+      contact.set("defaultCategory", catPointer);
     }
 
-    // Set default project if provided
-    if (projectId) {
-      const projPointer = Parse.Object.extend("Project").createWithoutData(projectId);
-      merchant.set("defaultProject", projPointer);
-    }
-
-    await merchant.save(null, { useMasterKey: true });
-    console.log(`[createTransactionFromParsed] Created new merchant: ${merchant.id}`);
+    await contact.save(null, { useMasterKey: true });
+    console.log(`[createTransactionFromParsed] Created new contact: ${contact.id}`);
   }
 
   // Get category and project objects for names
   let category = null;
   let project = null;
-  let employee = null;
   let isSalaryPayment = false;
 
   if (categoryId) {
@@ -1660,35 +1650,20 @@ Parse.Cloud.define("createTransactionFromParsed", async (request) => {
     project = await projQuery.get(projectId, { useMasterKey: true });
   }
 
-  // Handle employee - either use provided employeeId or auto-create for salary payments
-  if (employeeId) {
-    const empQuery = new Parse.Query("Employee");
-    empQuery.equalTo("user", user);
-    employee = await empQuery.get(employeeId, { useMasterKey: true });
-  } else if (isSalaryPayment && merchantName) {
-    // Auto-create employee for salary payments
-    const empQuery = new Parse.Query("Employee");
-    empQuery.equalTo("user", user);
-    empQuery.equalTo("name", merchantName.trim());
-    employee = await empQuery.first({ useMasterKey: true });
-
-    if (!employee) {
-      // Create new employee
-      const Employee = Parse.Object.extend("Employee");
-      employee = new Employee();
-      employee.set("name", merchantName.trim());
-      employee.set("role", "Employee");
-      employee.set("monthlySalary", amount);
-      employee.set("currency", currency);
-      employee.set("status", "active");
-      employee.set("user", user);
-      if (project) {
-        employee.set("project", project);
-      }
-      setUserACL(employee, user);
-      await employee.save(null, { useMasterKey: true });
-      console.log(`[createTransactionFromParsed] Auto-created employee: ${employee.id} - ${merchantName}`);
+  // Auto-update contact to employee for salary payments
+  if (isSalaryPayment && !(contact.get("types") || []).includes("employee")) {
+    const types = contact.get("types") || [];
+    types.push("employee");
+    contact.set("types", types);
+    contact.set("role", contact.get("role") || "Employee");
+    contact.set("monthlySalary", amount);
+    contact.set("salaryCurrency", currency);
+    contact.set("employeeStatus", "active");
+    if (project) {
+      contact.set("project", project);
     }
+    await contact.save(null, { useMasterKey: true });
+    console.log(`[createTransactionFromParsed] Auto-added employee type to contact: ${contact.id} - ${contactName}`);
   }
 
   // Create transaction
@@ -1700,8 +1675,8 @@ Parse.Cloud.define("createTransactionFromParsed", async (request) => {
   transaction.set("amountINR", await convertToINR(amount, currency, transactionDate));
   transaction.set("type", type);
   transaction.set("date", transactionDate);
-  transaction.set("merchant", merchant);
-  transaction.set("merchantName", merchant.get("name"));
+  transaction.set("contact", contact);
+  transaction.set("contactName", contact.get("name"));
 
   if (category) {
     transaction.set("category", category);
@@ -1711,11 +1686,6 @@ Parse.Cloud.define("createTransactionFromParsed", async (request) => {
   if (project) {
     transaction.set("project", project);
     transaction.set("projectName", project.get("name"));
-  }
-
-  if (employee) {
-    transaction.set("employee", employee);
-    transaction.set("employeeName", employee.get("name"));
   }
 
   if (allocations && allocations.length > 0) {
@@ -1746,14 +1716,14 @@ Parse.Cloud.define("createTransactionFromParsed", async (request) => {
     await rawInput.save(null, { useMasterKey: true });
   }
 
-  // Update merchant totals
+  // Update contact totals
   if (type === "expense") {
-    merchant.increment("totalSpent", amount);
+    contact.increment("totalSpent", amount);
   } else {
-    merchant.increment("totalReceived", amount);
+    contact.increment("totalReceived", amount);
   }
-  merchant.increment("transactionCount", 1);
-  await merchant.save(null, { useMasterKey: true });
+  contact.increment("transactionCount", 1);
+  await contact.save(null, { useMasterKey: true });
 
   console.log(`[createTransactionFromParsed] Created transaction ${transaction.id}`);
 
@@ -1764,14 +1734,12 @@ Parse.Cloud.define("createTransactionFromParsed", async (request) => {
     amountINR: transaction.get("amountINR"),
     type: transaction.get("type"),
     date: transaction.get("date"),
-    merchantId: merchant.id,
-    merchantName: transaction.get("merchantName"),
+    contactId: contact.id,
+    contactName: transaction.get("contactName"),
     categoryId: category?.id,
     categoryName: transaction.get("categoryName"),
     projectId: project?.id,
     projectName: transaction.get("projectName"),
-    employeeId: employee?.id,
-    employeeName: transaction.get("employeeName"),
     allocations: transaction.get("allocations"),
     description: transaction.get("description"),
     notes: transaction.get("notes"),
@@ -1793,15 +1761,14 @@ Parse.Cloud.define("getTransactions", async (request) => {
     type,
     projectId,
     categoryId,
-    merchantId,
-    employeeId,
+    contactId,
     limit,
     skip,
   } = request.params;
 
   const query = new Parse.Query("Transaction");
   query.equalTo("user", user);
-  query.include(["merchant", "category", "project", "employee"]);
+  query.include(["contact", "category", "project"]);
 
   if (startDate) {
     query.greaterThanOrEqualTo("date", new Date(startDate));
@@ -1820,13 +1787,9 @@ Parse.Cloud.define("getTransactions", async (request) => {
     const catPointer = Parse.Object.extend("Category").createWithoutData(categoryId);
     query.equalTo("category", catPointer);
   }
-  if (merchantId) {
-    const merchPointer = Parse.Object.extend("Merchant").createWithoutData(merchantId);
-    query.equalTo("merchant", merchPointer);
-  }
-  if (employeeId) {
-    const empPointer = Parse.Object.extend("Employee").createWithoutData(employeeId);
-    query.equalTo("employee", empPointer);
+  if (contactId) {
+    const contactPointer = Parse.Object.extend("Contact").createWithoutData(contactId);
+    query.equalTo("contact", contactPointer);
   }
 
   query.descending("date");
@@ -1846,14 +1809,12 @@ Parse.Cloud.define("getTransactions", async (request) => {
       amountINR: t.get("amountINR"),
       type: t.get("type"),
       date: t.get("date"),
-      merchantId: t.get("merchant")?.id,
-      merchantName: t.get("merchantName"),
+      contactId: t.get("contact")?.id,
+      contactName: t.get("contactName"),
       categoryId: t.get("category")?.id,
       categoryName: t.get("categoryName"),
       projectId: t.get("project")?.id,
       projectName: t.get("projectName"),
-      employeeId: t.get("employee")?.id,
-      employeeName: t.get("employeeName"),
       allocations: t.get("allocations"),
       description: t.get("description"),
       notes: t.get("notes"),
@@ -1942,11 +1903,16 @@ Parse.Cloud.define("getDashboard", async (request) => {
   }
 
   // Get counts
-  const [projectCount, merchantCount, employeeCount] = await Promise.all([
+  const [projectCount, contactCount] = await Promise.all([
     new Parse.Query("Project").equalTo("user", user).count({ useMasterKey: true }),
-    new Parse.Query("Merchant").equalTo("user", user).count({ useMasterKey: true }),
-    new Parse.Query("Employee").equalTo("user", user).count({ useMasterKey: true }),
+    new Parse.Query("Contact").equalTo("user", user).count({ useMasterKey: true }),
   ]);
+
+  // Get employee count (contacts with employee type)
+  const employeeQuery = new Parse.Query("Contact");
+  employeeQuery.equalTo("user", user);
+  employeeQuery.equalTo("types", "employee");
+  const employeeCount = await employeeQuery.count({ useMasterKey: true });
 
   // Get recent transactions
   const recentQuery = baseQuery();
@@ -1974,7 +1940,7 @@ Parse.Cloud.define("getDashboard", async (request) => {
     netAmount: totalIncome - totalExpenses,
     transactionCount: allTransactions.length,
     projectCount,
-    merchantCount,
+    contactCount,
     employeeCount,
     projectSummaries,
     topExpenseCategories,
@@ -1986,7 +1952,7 @@ Parse.Cloud.define("getDashboard", async (request) => {
       amountINR: t.get("amountINR"),
       type: t.get("type"),
       date: t.get("date"),
-      merchantName: t.get("merchantName"),
+      contactName: t.get("contactName"),
       categoryName: t.get("categoryName"),
       projectName: t.get("projectName"),
     })),
@@ -2011,7 +1977,7 @@ Parse.Cloud.define("getProjectSummary", async (request) => {
   const transQuery = new Parse.Query("Transaction");
   transQuery.equalTo("user", user);
   transQuery.equalTo("project", projPointer);
-  transQuery.include(["category", "merchant"]);
+  transQuery.include(["category", "contact"]);
   if (startDate) transQuery.greaterThanOrEqualTo("date", new Date(startDate));
   if (endDate) transQuery.lessThanOrEqualTo("date", new Date(endDate));
   transQuery.limit(10000);
@@ -2021,7 +1987,7 @@ Parse.Cloud.define("getProjectSummary", async (request) => {
   let totalIncome = 0;
   let totalExpenses = 0;
   const categoryTotals = {};
-  const merchantTotals = {};
+  const contactTotals = {};
   const monthlyData = {};
 
   for (const t of transactions) {
@@ -2047,15 +2013,15 @@ Parse.Cloud.define("getProjectSummary", async (request) => {
       categoryTotals[categoryId].amount += amountINR;
     }
 
-    // Merchant totals
-    const merchantId = t.get("merchant")?.id;
-    if (merchantId) {
-      const merchantName = t.get("merchantName");
-      if (!merchantTotals[merchantId]) {
-        merchantTotals[merchantId] = { id: merchantId, name: merchantName, amount: 0, count: 0 };
+    // Contact totals
+    const contactId = t.get("contact")?.id;
+    if (contactId) {
+      const contactName = t.get("contactName");
+      if (!contactTotals[contactId]) {
+        contactTotals[contactId] = { id: contactId, name: contactName, amount: 0, count: 0 };
       }
-      merchantTotals[merchantId].amount += amountINR;
-      merchantTotals[merchantId].count += 1;
+      contactTotals[contactId].amount += amountINR;
+      contactTotals[contactId].count += 1;
     }
 
     // Monthly trend
@@ -2069,10 +2035,11 @@ Parse.Cloud.define("getProjectSummary", async (request) => {
     }
   }
 
-  // Get employee count
-  const empQuery = new Parse.Query("Employee");
+  // Get employee count (contacts with employee type and this project)
+  const empQuery = new Parse.Query("Contact");
   empQuery.equalTo("user", user);
   empQuery.equalTo("project", projPointer);
+  empQuery.equalTo("types", "employee");
   const employeeCount = await empQuery.count({ useMasterKey: true });
 
   return {
@@ -2092,7 +2059,7 @@ Parse.Cloud.define("getProjectSummary", async (request) => {
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5)
       .map((c) => ({ ...c, percentage: totalExpenses > 0 ? (c.amount / totalExpenses) * 100 : 0 })),
-    topMerchants: Object.values(merchantTotals)
+    topContacts: Object.values(contactTotals)
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5),
     monthlyTrend: Object.values(monthlyData)
@@ -2113,10 +2080,9 @@ Parse.Cloud.define("updateTransaction", async (request) => {
     currency,
     type,
     date,
-    merchantName,
+    contactName,
     categoryId,
     projectId,
-    employeeId,
     description,
     notes,
   } = request.params;
@@ -2127,12 +2093,12 @@ Parse.Cloud.define("updateTransaction", async (request) => {
 
   const query = new Parse.Query("Transaction");
   query.equalTo("user", user);
-  query.include(["merchant", "category", "project", "employee"]);
+  query.include(["contact", "category", "project"]);
   const transaction = await query.get(transactionId, { useMasterKey: true });
 
   const oldAmount = transaction.get("amount");
   const oldType = transaction.get("type");
-  const oldMerchant = transaction.get("merchant");
+  const oldContact = transaction.get("contact");
 
   // Update basic fields
   if (amount !== undefined) {
@@ -2147,30 +2113,32 @@ Parse.Cloud.define("updateTransaction", async (request) => {
   if (description !== undefined) transaction.set("description", description);
   if (notes !== undefined) transaction.set("notes", notes);
 
-  // Handle merchant change
-  let merchant = oldMerchant;
-  if (merchantName && merchantName !== transaction.get("merchantName")) {
-    // Find or create new merchant
-    const merchantQuery = new Parse.Query("Merchant");
-    merchantQuery.equalTo("user", user);
-    merchantQuery.equalTo("name", merchantName.trim());
-    merchant = await merchantQuery.first({ useMasterKey: true });
+  // Handle contact change
+  let contact = oldContact;
+  if (contactName && contactName !== transaction.get("contactName")) {
+    // Find or create new contact
+    const contactQuery = new Parse.Query("Contact");
+    contactQuery.equalTo("user", user);
+    contactQuery.equalTo("name", contactName.trim());
+    contact = await contactQuery.first({ useMasterKey: true });
 
-    if (!merchant) {
-      const Merchant = Parse.Object.extend("Merchant");
-      merchant = new Merchant();
-      merchant.set("name", merchantName.trim());
-      merchant.set("aliases", []);
-      merchant.set("totalSpent", 0);
-      merchant.set("totalReceived", 0);
-      merchant.set("transactionCount", 0);
-      merchant.set("user", user);
-      setUserACL(merchant, user);
-      await merchant.save(null, { useMasterKey: true });
+    if (!contact) {
+      const Contact = Parse.Object.extend("Contact");
+      contact = new Contact();
+      contact.set("name", contactName.trim());
+      const newType = type || transaction.get("type");
+      contact.set("types", newType === "expense" ? ["supplier"] : ["customer"]);
+      contact.set("aliases", []);
+      contact.set("totalSpent", 0);
+      contact.set("totalReceived", 0);
+      contact.set("transactionCount", 0);
+      contact.set("user", user);
+      setUserACL(contact, user);
+      await contact.save(null, { useMasterKey: true });
     }
 
-    transaction.set("merchant", merchant);
-    transaction.set("merchantName", merchantName.trim());
+    transaction.set("contact", contact);
+    transaction.set("contactName", contactName.trim());
   }
 
   // Handle category change
@@ -2201,61 +2169,47 @@ Parse.Cloud.define("updateTransaction", async (request) => {
     }
   }
 
-  // Handle employee change
-  if (employeeId !== undefined) {
-    if (employeeId) {
-      const empQuery = new Parse.Query("Employee");
-      empQuery.equalTo("user", user);
-      const employee = await empQuery.get(employeeId, { useMasterKey: true });
-      transaction.set("employee", employee);
-      transaction.set("employeeName", employee.get("name"));
-    } else {
-      transaction.unset("employee");
-      transaction.unset("employeeName");
-    }
-  }
-
   await transaction.save(null, { useMasterKey: true });
 
-  // Update merchant totals if amount or type changed
+  // Update contact totals if amount or type changed
   const newAmount = transaction.get("amount");
   const newType = transaction.get("type");
-  const newMerchant = transaction.get("merchant");
+  const newContact = transaction.get("contact");
 
-  // If merchant changed, update both old and new merchant totals
-  if (oldMerchant && oldMerchant.id !== newMerchant?.id) {
-    // Remove from old merchant
+  // If contact changed, update both old and new contact totals
+  if (oldContact && oldContact.id !== newContact?.id) {
+    // Remove from old contact
     if (oldType === "expense") {
-      oldMerchant.increment("totalSpent", -oldAmount);
+      oldContact.increment("totalSpent", -oldAmount);
     } else {
-      oldMerchant.increment("totalReceived", -oldAmount);
+      oldContact.increment("totalReceived", -oldAmount);
     }
-    oldMerchant.increment("transactionCount", -1);
-    await oldMerchant.save(null, { useMasterKey: true });
+    oldContact.increment("transactionCount", -1);
+    await oldContact.save(null, { useMasterKey: true });
 
-    // Add to new merchant
-    if (newMerchant) {
+    // Add to new contact
+    if (newContact) {
       if (newType === "expense") {
-        newMerchant.increment("totalSpent", newAmount);
+        newContact.increment("totalSpent", newAmount);
       } else {
-        newMerchant.increment("totalReceived", newAmount);
+        newContact.increment("totalReceived", newAmount);
       }
-      newMerchant.increment("transactionCount", 1);
-      await newMerchant.save(null, { useMasterKey: true });
+      newContact.increment("transactionCount", 1);
+      await newContact.save(null, { useMasterKey: true });
     }
-  } else if (newMerchant && (oldAmount !== newAmount || oldType !== newType)) {
-    // Same merchant, but amount or type changed
+  } else if (newContact && (oldAmount !== newAmount || oldType !== newType)) {
+    // Same contact, but amount or type changed
     if (oldType === "expense") {
-      newMerchant.increment("totalSpent", -oldAmount);
+      newContact.increment("totalSpent", -oldAmount);
     } else {
-      newMerchant.increment("totalReceived", -oldAmount);
+      newContact.increment("totalReceived", -oldAmount);
     }
     if (newType === "expense") {
-      newMerchant.increment("totalSpent", newAmount);
+      newContact.increment("totalSpent", newAmount);
     } else {
-      newMerchant.increment("totalReceived", newAmount);
+      newContact.increment("totalReceived", newAmount);
     }
-    await newMerchant.save(null, { useMasterKey: true });
+    await newContact.save(null, { useMasterKey: true });
   }
 
   console.log(`[updateTransaction] Updated transaction ${transactionId}`);
@@ -2267,14 +2221,12 @@ Parse.Cloud.define("updateTransaction", async (request) => {
     amountINR: transaction.get("amountINR"),
     type: transaction.get("type"),
     date: transaction.get("date"),
-    merchantId: transaction.get("merchant")?.id,
-    merchantName: transaction.get("merchantName"),
+    contactId: transaction.get("contact")?.id,
+    contactName: transaction.get("contactName"),
     categoryId: transaction.get("category")?.id,
     categoryName: transaction.get("categoryName"),
     projectId: transaction.get("project")?.id,
     projectName: transaction.get("projectName"),
-    employeeId: transaction.get("employee")?.id,
-    employeeName: transaction.get("employeeName"),
     description: transaction.get("description"),
     notes: transaction.get("notes"),
     isRecurring: transaction.get("isRecurring"),
@@ -2293,22 +2245,22 @@ Parse.Cloud.define("deleteTransaction", async (request) => {
 
   const query = new Parse.Query("Transaction");
   query.equalTo("user", user);
-  query.include("merchant");
+  query.include("contact");
   const transaction = await query.get(transactionId, { useMasterKey: true });
 
   const amount = transaction.get("amount");
   const type = transaction.get("type");
-  const merchant = transaction.get("merchant");
+  const contact = transaction.get("contact");
 
-  // Update merchant totals
-  if (merchant) {
+  // Update contact totals
+  if (contact) {
     if (type === "expense") {
-      merchant.increment("totalSpent", -amount);
+      contact.increment("totalSpent", -amount);
     } else {
-      merchant.increment("totalReceived", -amount);
+      contact.increment("totalReceived", -amount);
     }
-    merchant.increment("transactionCount", -1);
-    await merchant.save(null, { useMasterKey: true });
+    contact.increment("transactionCount", -1);
+    await contact.save(null, { useMasterKey: true });
   }
 
   // Delete the transaction

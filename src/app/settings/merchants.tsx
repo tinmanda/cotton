@@ -14,30 +14,34 @@ import { Lucide } from "@react-native-vector-icons/lucide";
 import { useRouter, useFocusEffect } from "expo-router";
 import { COLORS } from "@/constants";
 import { FinanceService } from "@/services";
-import { IMerchant } from "@/types";
+import { IContact } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
 function formatAmount(amount: number): string {
   return `₹${amount.toLocaleString("en-IN")}`;
 }
 
-export default function MerchantsScreen() {
+export default function ContactsScreen() {
   const router = useRouter();
   const { showError } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [merchants, setMerchants] = useState<IMerchant[]>([]);
+  const [contacts, setContacts] = useState<IContact[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const loadMerchants = useCallback(
+  const loadContacts = useCallback(
     async (showLoader = true) => {
       if (showLoader) setIsLoading(true);
       try {
-        const result = await FinanceService.getMerchants({
+        const result = await FinanceService.getContacts({
           search: searchQuery || undefined,
         });
         if (result.success) {
-          setMerchants(result.data);
+          // Filter to show only suppliers and customers (not employees)
+          const nonEmployees = result.data.filter(
+            (c) => c.types.includes("supplier") || c.types.includes("customer")
+          );
+          setContacts(nonEmployees);
         } else {
           showError(result.error.message);
         }
@@ -51,17 +55,17 @@ export default function MerchantsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadMerchants();
-    }, [loadMerchants])
+      loadContacts();
+    }, [loadContacts])
   );
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    loadMerchants(false);
-  }, [loadMerchants]);
+    loadContacts(false);
+  }, [loadContacts]);
 
-  const filteredMerchants = merchants.filter((m) =>
-    m.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredContacts = contacts.filter((c) =>
+    c.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -76,8 +80,8 @@ export default function MerchantsScreen() {
           <Lucide name="chevron-left" size={24} color={COLORS.gray600} />
         </Pressable>
         <View className="flex-1">
-          <Text className="text-xl font-bold text-gray-900">Merchants</Text>
-          <Text className="text-xs text-gray-500">{merchants.length} vendors & clients</Text>
+          <Text className="text-xl font-bold text-gray-900">Contacts</Text>
+          <Text className="text-xs text-gray-500">{contacts.length} vendors & clients</Text>
         </View>
       </View>
 
@@ -88,7 +92,7 @@ export default function MerchantsScreen() {
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search merchants..."
+            placeholder="Search contacts..."
             placeholderTextColor={COLORS.gray400}
             className="flex-1 ml-2 text-base"
             style={{ color: COLORS.gray900 }}
@@ -105,25 +109,25 @@ export default function MerchantsScreen() {
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
-      ) : filteredMerchants.length === 0 ? (
+      ) : filteredContacts.length === 0 ? (
         <View style={styles.emptyState} className="mx-4 mt-6 bg-white rounded-2xl p-8 items-center">
           <View style={styles.emptyIconBg}>
-            <Lucide name="store" size={32} color={COLORS.gray400} />
+            <Lucide name="users" size={32} color={COLORS.gray400} />
           </View>
           <Text className="text-base font-medium text-gray-700 mt-4">
-            {searchQuery ? "No merchants found" : "No merchants yet"}
+            {searchQuery ? "No contacts found" : "No contacts yet"}
           </Text>
           <Text className="text-sm text-gray-500 text-center mt-1">
             {searchQuery
               ? "Try a different search term"
-              : "Merchants are automatically created when you add transactions"}
+              : "Contacts are automatically created when you add transactions"}
           </Text>
         </View>
       ) : (
         <FlatList
-          data={filteredMerchants}
+          data={filteredContacts}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <MerchantRow merchant={item} />}
+          renderItem={({ item }) => <ContactRow contact={item} />}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -139,21 +143,41 @@ export default function MerchantsScreen() {
   );
 }
 
-function MerchantRow({ merchant }: { merchant: IMerchant }) {
-  const totalAmount = merchant.totalSpent + merchant.totalReceived;
-  const isNetPositive = merchant.totalReceived > merchant.totalSpent;
+function ContactRow({ contact }: { contact: IContact }) {
+  const totalAmount = contact.totalSpent + contact.totalReceived;
+  const isSupplier = contact.types.includes("supplier");
+  const isCustomer = contact.types.includes("customer");
+
+  // Determine icon based on type
+  const iconName = isCustomer && !isSupplier ? "user" : "store";
 
   return (
-    <View style={styles.merchantCard} className="mx-4 mb-3 bg-white rounded-xl p-4">
+    <View style={styles.contactCard} className="mx-4 mb-3 bg-white rounded-xl p-4">
       <View className="flex-row items-center">
-        <View style={styles.merchantIcon}>
-          <Lucide name="store" size={18} color={COLORS.primary} />
+        <View style={styles.contactIcon}>
+          <Lucide name={iconName} size={18} color={COLORS.primary} />
         </View>
         <View className="flex-1 ml-3">
-          <Text className="text-base font-semibold text-gray-900">{merchant.name}</Text>
-          <Text className="text-xs text-gray-500 mt-0.5">
-            {merchant.transactionCount} transactions
-          </Text>
+          <Text className="text-base font-semibold text-gray-900">{contact.name}</Text>
+          <View className="flex-row items-center mt-0.5">
+            <Text className="text-xs text-gray-500">
+              {contact.transactionCount} transactions
+            </Text>
+            {contact.types.length > 0 && (
+              <View className="flex-row ml-2">
+                {isSupplier && (
+                  <View style={styles.typeBadge} className="px-1.5 py-0.5 rounded mr-1">
+                    <Text className="text-xs text-gray-500">Supplier</Text>
+                  </View>
+                )}
+                {isCustomer && (
+                  <View style={styles.typeBadge} className="px-1.5 py-0.5 rounded">
+                    <Text className="text-xs text-gray-500">Customer</Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
         </View>
       </View>
 
@@ -162,13 +186,13 @@ function MerchantRow({ merchant }: { merchant: IMerchant }) {
           <View className="flex-1">
             <Text className="text-xs text-gray-500">Spent</Text>
             <Text className="text-sm font-medium text-error mt-0.5">
-              {formatAmount(merchant.totalSpent)}
+              {formatAmount(contact.totalSpent)}
             </Text>
           </View>
           <View className="flex-1">
             <Text className="text-xs text-gray-500">Received</Text>
             <Text className="text-sm font-medium text-success mt-0.5">
-              {formatAmount(merchant.totalReceived)}
+              {formatAmount(contact.totalReceived)}
             </Text>
           </View>
         </View>
@@ -196,19 +220,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  merchantCard: {
+  contactCard: {
     shadowColor: COLORS.shadow,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 1,
   },
-  merchantIcon: {
+  contactIcon: {
     width: 40,
     height: 40,
     borderRadius: 12,
     backgroundColor: `${COLORS.primary}15`,
     alignItems: "center",
     justifyContent: "center",
+  },
+  typeBadge: {
+    backgroundColor: COLORS.gray100,
   },
 });

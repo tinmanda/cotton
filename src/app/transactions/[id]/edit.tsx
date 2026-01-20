@@ -48,7 +48,7 @@ export default function EditTransactionScreen() {
   const [currency, setCurrency] = useState<Currency>("INR");
   const [type, setType] = useState<TransactionType>("expense");
   const [date, setDate] = useState(formatDateForInput(new Date()));
-  const [merchantName, setMerchantName] = useState("");
+  const [contactName, setMerchantName] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [description, setDescription] = useState("");
@@ -75,7 +75,7 @@ export default function EditTransactionScreen() {
           setCurrency(found.currency);
           setType(found.type);
           setDate(formatDateForInput(found.date));
-          setMerchantName(found.merchantName || "");
+          setMerchantName(found.contactName || "");
           setCategoryId(found.categoryId || null);
           setProjectId(found.projectId || null);
           setDescription(found.description || "");
@@ -101,7 +101,7 @@ export default function EditTransactionScreen() {
       currency !== transaction.currency ||
       type !== transaction.type ||
       date !== formatDateForInput(transaction.date) ||
-      merchantName !== (transaction.merchantName || "") ||
+      contactName !== (transaction.contactName || "") ||
       categoryId !== (transaction.categoryId || null) ||
       projectId !== (transaction.projectId || null) ||
       description !== (transaction.description || "")
@@ -113,7 +113,7 @@ export default function EditTransactionScreen() {
       showError("Please enter a valid amount");
       return;
     }
-    if (!merchantName.trim()) {
+    if (!contactName.trim()) {
       showError("Merchant name is required");
       return;
     }
@@ -126,7 +126,7 @@ export default function EditTransactionScreen() {
         currency,
         type,
         date,
-        merchantName: merchantName.trim(),
+        contactName: contactName.trim(),
         categoryId,
         projectId,
         description: description.trim(),
@@ -159,7 +159,7 @@ export default function EditTransactionScreen() {
     }
   };
 
-  const isFormValid = parseFloat(amount) > 0 && merchantName.trim().length > 0;
+  const isFormValid = parseFloat(amount) > 0 && contactName.trim().length > 0;
   const canSave = isFormValid && hasChanges;
 
   // Filter categories by type
@@ -308,7 +308,7 @@ export default function EditTransactionScreen() {
             <View className="bg-gray-100 rounded-xl px-4 py-3.5 flex-row items-center">
               <Lucide name="store" size={18} color={COLORS.gray500} />
               <TextInput
-                value={merchantName}
+                value={contactName}
                 onChangeText={setMerchantName}
                 placeholder="e.g., Amazon, Swiggy"
                 placeholderTextColor={COLORS.gray400}

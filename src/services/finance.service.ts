@@ -3,8 +3,7 @@ import {
   ApiResponse,
   IProject,
   ICategory,
-  IMerchant,
-  IEmployee,
+  IContact,
   ITransaction,
   IDashboardSummary,
   IProjectSummary,
@@ -18,6 +17,7 @@ import {
   TransactionFilters,
   ProjectType,
   ProjectStatus,
+  ContactType,
   EmployeeStatus,
   Currency,
   TransactionType,
@@ -153,134 +153,31 @@ export class FinanceService {
   }
 
   // ============================================
-  // Employees
+  // Contacts (Unified: Customers, Suppliers, Employees)
   // ============================================
 
   /**
-   * Create a new employee
+   * Create a new contact
    */
-  static async createEmployee(params: {
+  static async createContact(params: {
     name: string;
-    role: string;
-    projectId: string;
-    monthlySalary: number;
-    currency?: Currency;
-    email?: string;
-    phone?: string;
-    notes?: string;
-  }): Promise<ApiResponse<IEmployee>> {
-    try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.CREATE_EMPLOYEE,
-        params
-      );
-      return successResponse({
-        ...result,
-        createdAt: new Date(result.createdAt),
-        updatedAt: new Date(result.updatedAt),
-      });
-    } catch (error) {
-      return errorResponseFromUnknown(error);
-    }
-  }
-
-  /**
-   * Get employees
-   */
-  static async getEmployees(params?: {
-    projectId?: string;
-    status?: EmployeeStatus;
-  }): Promise<ApiResponse<IEmployee[]>> {
-    try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.GET_EMPLOYEES,
-        params || {}
-      );
-      return successResponse(
-        result.map((e: IEmployee) => ({
-          ...e,
-          createdAt: new Date(e.createdAt),
-          updatedAt: new Date(e.updatedAt),
-        }))
-      );
-    } catch (error) {
-      return errorResponseFromUnknown(error);
-    }
-  }
-
-  /**
-   * Update an employee
-   */
-  static async updateEmployee(params: {
-    employeeId: string;
-    name?: string;
-    role?: string;
-    projectId?: string;
-    monthlySalary?: number;
-    currency?: Currency;
-    status?: EmployeeStatus;
-    email?: string;
-    phone?: string;
-    notes?: string;
-  }): Promise<ApiResponse<IEmployee>> {
-    try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.UPDATE_EMPLOYEE,
-        params
-      );
-      return successResponse({
-        ...result,
-        createdAt: new Date(result.createdAt),
-        updatedAt: new Date(result.updatedAt),
-      });
-    } catch (error) {
-      return errorResponseFromUnknown(error);
-    }
-  }
-
-  // ============================================
-  // Merchants
-  // ============================================
-
-  /**
-   * Get merchants
-   */
-  static async getMerchants(params?: {
-    search?: string;
-    limit?: number;
-  }): Promise<ApiResponse<IMerchant[]>> {
-    try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.GET_MERCHANTS,
-        params || {}
-      );
-      return successResponse(
-        result.map((m: IMerchant) => ({
-          ...m,
-          createdAt: new Date(m.createdAt),
-          updatedAt: new Date(m.updatedAt),
-        }))
-      );
-    } catch (error) {
-      return errorResponseFromUnknown(error);
-    }
-  }
-
-  /**
-   * Update a merchant
-   */
-  static async updateMerchant(params: {
-    merchantId: string;
-    name?: string;
+    types: ContactType[];
     aliases?: string[];
-    defaultCategoryId?: string | null;
-    defaultProjectId?: string | null;
+    email?: string;
+    phone?: string;
+    company?: string;
     website?: string;
     notes?: string;
-  }): Promise<ApiResponse<IMerchant>> {
+    defaultCategoryId?: string;
+    // Employee-specific fields
+    role?: string;
+    monthlySalary?: number;
+    salaryCurrency?: Currency;
+    projectId?: string;
+  }): Promise<ApiResponse<IContact>> {
     try {
       const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.UPDATE_MERCHANT,
+        CLOUD_FUNCTIONS.CREATE_CONTACT,
         params
       );
       return successResponse({
@@ -294,15 +191,78 @@ export class FinanceService {
   }
 
   /**
-   * Delete a merchant
-   * Note: Will fail if merchant has associated transactions
+   * Get contacts with optional filters
    */
-  static async deleteMerchant(
-    merchantId: string
+  static async getContacts(params?: {
+    type?: ContactType;
+    projectId?: string;
+    employeeStatus?: EmployeeStatus;
+    search?: string;
+    limit?: number;
+  }): Promise<ApiResponse<IContact[]>> {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.GET_CONTACTS,
+        params || {}
+      );
+      return successResponse(
+        result.map((c: IContact) => ({
+          ...c,
+          createdAt: new Date(c.createdAt),
+          updatedAt: new Date(c.updatedAt),
+        }))
+      );
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
+   * Update a contact
+   */
+  static async updateContact(params: {
+    contactId: string;
+    name?: string;
+    types?: ContactType[];
+    aliases?: string[];
+    email?: string;
+    phone?: string;
+    company?: string;
+    website?: string;
+    notes?: string;
+    defaultCategoryId?: string | null;
+    // Employee-specific fields
+    role?: string;
+    monthlySalary?: number;
+    salaryCurrency?: Currency;
+    employeeStatus?: EmployeeStatus;
+    projectId?: string | null;
+  }): Promise<ApiResponse<IContact>> {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.UPDATE_CONTACT,
+        params
+      );
+      return successResponse({
+        ...result,
+        createdAt: new Date(result.createdAt),
+        updatedAt: new Date(result.updatedAt),
+      });
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
+   * Delete a contact
+   * Note: Will fail if contact has associated transactions
+   */
+  static async deleteContact(
+    contactId: string
   ): Promise<ApiResponse<{ success: boolean; deletedId: string }>> {
     try {
-      const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.DELETE_MERCHANT, {
-        merchantId,
+      const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.DELETE_CONTACT, {
+        contactId,
       });
       return successResponse(result);
     } catch (error) {
@@ -415,10 +375,9 @@ export class FinanceService {
     currency: Currency;
     type: TransactionType;
     date: string;
-    merchantName: string;
+    contactName: string;
     categoryId?: string;
     projectId?: string;
-    employeeId?: string;
     allocations?: IAllocation[];
     description?: string;
     notes?: string;
@@ -456,8 +415,7 @@ export class FinanceService {
       if (filters?.type) params.type = filters.type;
       if (filters?.projectId) params.projectId = filters.projectId;
       if (filters?.categoryId) params.categoryId = filters.categoryId;
-      if (filters?.merchantId) params.merchantId = filters.merchantId;
-      if (filters?.employeeId) params.employeeId = filters.employeeId;
+      if (filters?.contactId) params.contactId = filters.contactId;
       if (filters?.limit) params.limit = filters.limit;
       if (filters?.skip) params.skip = filters.skip;
 
@@ -490,10 +448,9 @@ export class FinanceService {
     currency?: Currency;
     type?: TransactionType;
     date?: string;
-    merchantName?: string;
+    contactName?: string;
     categoryId?: string | null;
     projectId?: string | null;
-    employeeId?: string | null;
     description?: string;
     notes?: string;
   }): Promise<ApiResponse<ITransaction>> {
