@@ -1436,6 +1436,7 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
       type,
       date,
       contactName,
+      contactType, // Optional: override for contact type (customer, supplier, employee)
       categoryId,
       projectId,
       description,
@@ -1456,13 +1457,21 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
       const Contact = Parse.Object.extend("Contact");
       contact = new Contact();
       contact.set("name", contactName.trim());
-      // Default to supplier for expenses, customer for income
-      contact.set("types", type === "expense" ? ["supplier"] : ["customer"]);
+      // Use provided contactType, or default based on transaction type
+      const initialType = contactType || (type === "expense" ? "supplier" : "customer");
+      contact.set("types", [initialType]);
       contact.set("aliases", []);
       contact.set("totalSpent", 0);
       contact.set("totalReceived", 0);
       contact.set("transactionCount", 0);
       contact.set("user", user);
+
+      // Set employee-specific defaults if type is employee
+      if (initialType === "employee") {
+        contact.set("role", "Employee");
+        contact.set("employeeStatus", "active");
+      }
+
       setUserACL(contact, user);
       await contact.save(null, { useMasterKey: true });
     }

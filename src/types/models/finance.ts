@@ -277,6 +277,7 @@ export interface CreateBulkTransactionsRequest {
     type: TransactionType;
     date: string;
     contactName: string;
+    contactType?: ContactType; // Override AI-detected contact type
     categoryId?: string;
     projectId?: string;
     description?: string;
