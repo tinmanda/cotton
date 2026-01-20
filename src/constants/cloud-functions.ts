@@ -39,6 +39,11 @@ export const CLOUD_FUNCTIONS = {
   GET_DASHBOARD: "getDashboard",
   GET_PROJECT_SUMMARY: "getProjectSummary",
 
+  // Flagged Transactions
+  GET_FLAGGED_TRANSACTIONS: "getFlaggedTransactions",
+  MARK_TRANSACTION_REVIEWED: "markTransactionReviewed",
+  GET_FLAGGED_COUNT: "getFlaggedCount",
+
   // Utility
   HELLO: "hello",
 } as const;

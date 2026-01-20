@@ -14,6 +14,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { COLORS, ROUTES } from "@/constants";
 import { FinanceService } from "@/services";
 import {
@@ -25,10 +27,12 @@ import {
 } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
-interface SelectedImage {
+interface SelectedFile {
   uri: string;
   base64: string;
   mediaType: string;
+  name?: string;
+  isPdf?: boolean;
 }
 
 function formatAmount(amount: number, currency: Currency): string {
@@ -42,7 +46,7 @@ export default function AddTransactionScreen() {
   const router = useRouter();
   const { showSuccess, showError } = useToast();
   const [text, setText] = useState("");
-  const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
   const [isParsing, setIsParsing] = useState(false);
   const [parsedResult, setParsedResult] = useState<ParseTransactionResponse | null>(null);
   const [projects, setProjects] = useState<IProject[]>([]);
@@ -68,20 +72,20 @@ export default function AddTransactionScreen() {
     loadData();
   }, []);
 
-  const hasInput = text.trim().length > 0 || selectedImages.length > 0;
+  const hasInput = text.trim().length > 0 || selectedFiles.length > 0;
 
   const handleParse = async () => {
     if (!hasInput) {
-      showError("Please enter text or add images");
+      showError("Please enter text or add files");
       return;
     }
 
     setIsParsing(true);
     try {
       // Use the unified parsing API
-      const images: ImageInput[] = selectedImages.map((img) => ({
-        base64: img.base64,
-        mediaType: img.mediaType,
+      const images: ImageInput[] = selectedFiles.map((file) => ({
+        base64: file.base64,
+        mediaType: file.mediaType,
       }));
 
       const result = await FinanceService.parseTransactionInput({
@@ -150,22 +154,23 @@ export default function AddTransactionScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
         allowsMultipleSelection: true,
-        selectionLimit: 5 - selectedImages.length, // Max 5 images total
+        selectionLimit: 5 - selectedFiles.length, // Max 5 files total
         quality: 0.8,
         base64: true,
       });
 
       if (result.canceled) return;
 
-      const newImages: SelectedImage[] = result.assets
+      const newFiles: SelectedFile[] = result.assets
         .filter((asset) => asset.base64)
         .map((asset) => ({
           uri: asset.uri,
           base64: asset.base64!,
           mediaType: asset.mimeType || "image/jpeg",
+          isPdf: false,
         }));
 
-      setSelectedImages((prev) => [...prev, ...newImages].slice(0, 5));
+      setSelectedFiles((prev) => [...prev, ...newFiles].slice(0, 5));
     } catch (error) {
       showError("Failed to pick images");
     }
@@ -188,24 +193,65 @@ export default function AddTransactionScreen() {
       if (result.canceled || !result.assets[0].base64) return;
 
       const asset = result.assets[0];
-      const newImage: SelectedImage = {
+      const newFile: SelectedFile = {
         uri: asset.uri,
         base64: asset.base64,
         mediaType: asset.mimeType || "image/jpeg",
+        isPdf: false,
       };
 
-      setSelectedImages((prev) => [...prev, newImage].slice(0, 5));
+      setSelectedFiles((prev) => [...prev, newFile].slice(0, 5));
     } catch (error) {
       showError("Failed to capture image");
     }
   };
 
-  const removeImage = (index: number) => {
-    setSelectedImages((prev) => prev.filter((_, i) => i !== index));
+  const handlePdfPick = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "application/pdf",
+        copyToCacheDirectory: true,
+        multiple: true,
+      });
+
+      if (result.canceled) return;
+
+      const newFiles: SelectedFile[] = [];
+      for (const asset of result.assets.slice(0, 5 - selectedFiles.length)) {
+        try {
+          const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          newFiles.push({
+            uri: asset.uri,
+            base64,
+            mediaType: "application/pdf",
+            name: asset.name,
+            isPdf: true,
+          });
+        } catch (e) {
+          console.error("Failed to read PDF:", e);
+        }
+      }
+
+      setSelectedFiles((prev) => [...prev, ...newFiles].slice(0, 5));
+    } catch (error) {
+      showError("Failed to pick PDF");
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleConfirm = async () => {
     if (!parsedResult) return;
+
+    // Project is required
+    if (!selectedProjectId) {
+      showError("Please select a project");
+      return;
+    }
 
     setIsCreating(true);
     try {
@@ -235,7 +281,7 @@ export default function AddTransactionScreen() {
 
   const handleReset = () => {
     setText("");
-    setSelectedImages([]);
+    setSelectedFiles([]);
     setParsedResult(null);
     setSelectedProjectId(undefined);
     setSelectedCategoryId(undefined);
@@ -294,37 +340,46 @@ Examples:
                   />
                 </View>
 
-                {/* Images Section */}
+                {/* Files Section (Images & PDFs) */}
                 <View style={styles.inputCard} className="bg-white rounded-2xl p-4 mt-3">
                   <View className="flex-row items-center justify-between mb-3">
                     <View className="flex-row items-center">
-                      <Lucide name="image" size={16} color={COLORS.gray500} />
+                      <Lucide name="paperclip" size={16} color={COLORS.gray500} />
                       <Text className="text-sm font-medium text-gray-500 ml-2">
-                        Images (optional)
+                        Files (optional)
                       </Text>
                     </View>
                     <Text className="text-xs text-gray-400">
-                      {selectedImages.length}/5
+                      {selectedFiles.length}/5
                     </Text>
                   </View>
 
-                  {/* Selected Images */}
-                  {selectedImages.length > 0 && (
+                  {/* Selected Files */}
+                  {selectedFiles.length > 0 && (
                     <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
                       className="mb-3"
                     >
                       <View className="flex-row gap-2">
-                        {selectedImages.map((img, index) => (
+                        {selectedFiles.map((file, index) => (
                           <View key={index} className="relative">
-                            <Image
-                              source={{ uri: img.uri }}
-                              style={styles.imageThumb}
-                              className="rounded-lg"
-                            />
+                            {file.isPdf ? (
+                              <View style={styles.pdfThumb} className="rounded-lg items-center justify-center">
+                                <Lucide name="file-text" size={24} color={COLORS.error} />
+                                <Text className="text-xs text-gray-600 mt-1 text-center px-1" numberOfLines={1}>
+                                  {file.name?.substring(0, 10) || "PDF"}
+                                </Text>
+                              </View>
+                            ) : (
+                              <Image
+                                source={{ uri: file.uri }}
+                                style={styles.imageThumb}
+                                className="rounded-lg"
+                              />
+                            )}
                             <Pressable
-                              onPress={() => removeImage(index)}
+                              onPress={() => removeFile(index)}
                               style={styles.removeButton}
                               className="absolute -top-2 -right-2"
                             >
@@ -336,27 +391,39 @@ Examples:
                     </ScrollView>
                   )}
 
-                  {/* Add Image Buttons */}
-                  {selectedImages.length < 5 && (
-                    <View className="flex-row gap-2">
+                  {/* Add File Buttons */}
+                  {selectedFiles.length < 5 && (
+                    <View className="gap-2">
+                      <View className="flex-row gap-2">
+                        <Pressable
+                          onPress={handleCamera}
+                          style={styles.imageButton}
+                          className="flex-1 flex-row items-center justify-center py-3 rounded-xl"
+                        >
+                          <Lucide name="camera" size={18} color={COLORS.primary} />
+                          <Text className="text-sm font-medium text-primary ml-2">
+                            Camera
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={handleImagePick}
+                          style={styles.imageButton}
+                          className="flex-1 flex-row items-center justify-center py-3 rounded-xl"
+                        >
+                          <Lucide name="image-plus" size={18} color={COLORS.primary} />
+                          <Text className="text-sm font-medium text-primary ml-2">
+                            Gallery
+                          </Text>
+                        </Pressable>
+                      </View>
                       <Pressable
-                        onPress={handleCamera}
+                        onPress={handlePdfPick}
                         style={styles.imageButton}
-                        className="flex-1 flex-row items-center justify-center py-3 rounded-xl"
+                        className="flex-row items-center justify-center py-3 rounded-xl"
                       >
-                        <Lucide name="camera" size={18} color={COLORS.primary} />
+                        <Lucide name="file-text" size={18} color={COLORS.primary} />
                         <Text className="text-sm font-medium text-primary ml-2">
-                          Camera
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={handleImagePick}
-                        style={styles.imageButton}
-                        className="flex-1 flex-row items-center justify-center py-3 rounded-xl"
-                      >
-                        <Lucide name="image-plus" size={18} color={COLORS.primary} />
-                        <Text className="text-sm font-medium text-primary ml-2">
-                          Gallery
+                          PDF Document
                         </Text>
                       </Pressable>
                     </View>
@@ -395,7 +462,7 @@ Examples:
                     Supported inputs
                   </Text>
                   <View className="flex-row flex-wrap gap-2">
-                    {["Receipts", "Invoices", "Bank SMS", "Screenshots", "Manual notes"].map(
+                    {["Receipts", "Invoices", "Bank SMS", "Screenshots", "PDFs", "Manual notes"].map(
                       (type) => (
                         <View key={type} style={styles.supportedChip} className="px-3 py-1.5 rounded-full">
                           <Text className="text-xs text-gray-600">{type}</Text>
@@ -468,12 +535,15 @@ Examples:
                   </Text>
                 </View>
 
-                {/* Project Selector */}
+                {/* Project Selector (Required) */}
                 <Pressable
                   onPress={() => setShowProjectPicker(true)}
                   className="flex-row items-center justify-between py-3 border-t border-gray-100"
                 >
-                  <Text className="text-sm text-gray-500">Project</Text>
+                  <View className="flex-row items-center">
+                    <Text className="text-sm text-gray-500">Project</Text>
+                    <Text className="text-xs text-error ml-1">*</Text>
+                  </View>
                   <View className="flex-row items-center">
                     {selectedProject ? (
                       <>
@@ -485,7 +555,7 @@ Examples:
                         </Text>
                       </>
                     ) : (
-                      <Text className="text-sm text-gray-400">Select project</Text>
+                      <Text className="text-sm text-error">Select project</Text>
                     )}
                     <Lucide name="chevron-right" size={16} color={COLORS.gray400} className="ml-1" />
                   </View>
@@ -552,7 +622,7 @@ Examples:
             </View>
 
             {/* Original Input */}
-            {(text || selectedImages.length > 0) && (
+            {(text || selectedFiles.length > 0) && (
               <View className="mt-6">
                 <Text className="text-xs text-gray-400 mb-2">Original input:</Text>
                 {text && (
@@ -560,9 +630,9 @@ Examples:
                     {text}
                   </Text>
                 )}
-                {selectedImages.length > 0 && (
+                {selectedFiles.length > 0 && (
                   <Text className="text-xs text-gray-500">
-                    + {selectedImages.length} image{selectedImages.length > 1 ? "s" : ""}
+                    + {selectedFiles.length} file{selectedFiles.length > 1 ? "s" : ""}
                   </Text>
                 )}
               </View>
@@ -571,18 +641,19 @@ Examples:
         )}
       </ScrollView>
 
-      {/* Project Picker Modal */}
+      {/* Project Picker Modal (Required - no clear option) */}
       <PickerModal
         visible={showProjectPicker}
         title="Select Project"
         items={projects.map((p) => ({ id: p.id, name: p.name, color: p.color }))}
         selectedId={selectedProjectId}
         onSelect={(id) => {
-          setSelectedProjectId(id);
-          setShowProjectPicker(false);
+          if (id) {
+            setSelectedProjectId(id);
+            setShowProjectPicker(false);
+          }
         }}
         onClose={() => setShowProjectPicker(false)}
-        allowClear
       />
 
       {/* Category Picker Modal */}
@@ -689,6 +760,11 @@ const styles = StyleSheet.create({
   imageThumb: {
     width: 72,
     height: 72,
+  },
+  pdfThumb: {
+    width: 72,
+    height: 72,
+    backgroundColor: `${COLORS.error}10`,
   },
   removeButton: {
     width: 20,

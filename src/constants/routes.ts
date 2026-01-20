@@ -24,6 +24,7 @@ export const ROUTES = {
   TRANSACTION_CONFIRM: "/transactions/confirm",
   TRANSACTION_EDIT: "/transactions/[id]/edit",
   BULK_TRANSACTIONS: "/transactions/bulk",
+  FLAGGED_TRANSACTIONS: "/transactions/flagged",
 
   // Settings screens
   CUSTOMERS: "/settings/contacts?type=customer",

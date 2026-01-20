@@ -544,4 +544,67 @@ export class FinanceService {
       return errorResponseFromUnknown(error);
     }
   }
+
+  // ============================================
+  // Flagged Transactions
+  // ============================================
+
+  /**
+   * Get transactions flagged for review
+   */
+  static async getFlaggedTransactions(params?: {
+    limit?: number;
+    skip?: number;
+  }): Promise<
+    ApiResponse<{ transactions: ITransaction[]; total: number; hasMore: boolean }>
+  > {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.GET_FLAGGED_TRANSACTIONS,
+        params
+      );
+
+      return successResponse({
+        transactions: result.transactions.map((t: ITransaction) => ({
+          ...t,
+          date: new Date(t.date),
+          createdAt: new Date(t.createdAt),
+          updatedAt: new Date(t.updatedAt),
+        })),
+        total: result.total,
+        hasMore: result.hasMore,
+      });
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
+   * Mark a transaction as reviewed (remove the flag)
+   */
+  static async markTransactionReviewed(
+    transactionId: string
+  ): Promise<ApiResponse<{ success: boolean; transactionId: string }>> {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.MARK_TRANSACTION_REVIEWED,
+        { transactionId }
+      );
+      return successResponse(result);
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
+   * Get count of flagged transactions
+   */
+  static async getFlaggedCount(): Promise<ApiResponse<{ count: number }>> {
+    try {
+      const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.GET_FLAGGED_COUNT);
+      return successResponse(result);
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
 }

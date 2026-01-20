@@ -1440,6 +1440,8 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
       categoryId,
       projectId,
       description,
+      needsReview, // Flag for low-confidence transactions
+      confidence, // AI confidence score
     } = txData;
 
     if (!amount || !currency || !type || !date || !contactName) {
@@ -1536,6 +1538,14 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
 
     if (description) {
       transaction.set("description", description);
+    }
+
+    // Set review flags
+    if (needsReview !== undefined) {
+      transaction.set("needsReview", needsReview);
+    }
+    if (confidence !== undefined) {
+      transaction.set("confidence", confidence);
     }
 
     if (rawInputId) {
@@ -2278,6 +2288,94 @@ Parse.Cloud.define("deleteTransaction", async (request) => {
   console.log(`[deleteTransaction] Deleted transaction ${transactionId}`);
 
   return { success: true, deletedId: transactionId };
+});
+
+// ============================================
+// Flagged Transactions
+// ============================================
+
+/**
+ * Get transactions flagged for review
+ */
+Parse.Cloud.define("getFlaggedTransactions", async (request) => {
+  const user = requireUser(request);
+  const { limit = 50, skip = 0 } = request.params;
+
+  const query = new Parse.Query("Transaction");
+  query.equalTo("user", user);
+  query.equalTo("needsReview", true);
+  query.include(["contact", "category", "project"]);
+  query.descending("createdAt");
+  query.limit(limit);
+  query.skip(skip);
+
+  const [results, total] = await Promise.all([
+    query.find({ useMasterKey: true }),
+    query.count({ useMasterKey: true }),
+  ]);
+
+  console.log(`[getFlaggedTransactions] Found ${results.length} flagged transactions for user ${user.id}`);
+
+  return {
+    transactions: results.map((t) => ({
+      id: t.id,
+      amount: t.get("amount"),
+      currency: t.get("currency"),
+      amountINR: t.get("amountINR"),
+      type: t.get("type"),
+      date: t.get("date"),
+      contactId: t.get("contact")?.id,
+      contactName: t.get("contactName"),
+      categoryId: t.get("category")?.id,
+      categoryName: t.get("categoryName"),
+      projectId: t.get("project")?.id,
+      projectName: t.get("projectName"),
+      description: t.get("description"),
+      confidence: t.get("confidence"),
+      needsReview: t.get("needsReview"),
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+    })),
+    total,
+    hasMore: skip + results.length < total,
+  };
+});
+
+/**
+ * Mark a transaction as reviewed (remove the flag)
+ */
+Parse.Cloud.define("markTransactionReviewed", async (request) => {
+  const user = requireUser(request);
+  const { transactionId } = request.params;
+
+  if (!transactionId) {
+    throw new Parse.Error(Parse.Error.INVALID_QUERY, "Transaction ID is required");
+  }
+
+  const query = new Parse.Query("Transaction");
+  query.equalTo("user", user);
+  const transaction = await query.get(transactionId, { useMasterKey: true });
+
+  transaction.set("needsReview", false);
+  await transaction.save(null, { useMasterKey: true });
+
+  console.log(`[markTransactionReviewed] Marked transaction ${transactionId} as reviewed`);
+
+  return { success: true, transactionId };
+});
+
+/**
+ * Get count of flagged transactions (for badge display)
+ */
+Parse.Cloud.define("getFlaggedCount", async (request) => {
+  const user = requireUser(request);
+
+  const query = new Parse.Query("Transaction");
+  query.equalTo("user", user);
+  query.equalTo("needsReview", true);
+  const count = await query.count({ useMasterKey: true });
+
+  return { count };
 });
 
 // ============================================

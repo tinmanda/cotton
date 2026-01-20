@@ -72,8 +72,33 @@ export default function BulkTransactionsScreen() {
   // Track contact type overrides for new contacts
   const [contactTypeOverrides, setContactTypeOverrides] = useState<Record<string, ContactType>>({});
 
+  // Bulk project selector
+  const [bulkProjectId, setBulkProjectId] = useState<string | undefined>();
+
   const categories = initialData?.categories || [];
-  const projects = initialData?.projects || [];
+  const projects: Array<{ id: string; name: string; color?: string }> = initialData?.projects || [];
+
+  // Apply bulk project to all transactions
+  const applyBulkProject = (projectId: string) => {
+    setBulkProjectId(projectId);
+    setTransactions((prev) =>
+      prev.map((t) => ({ ...t, projectId }))
+    );
+  };
+
+  // Update individual transaction's project
+  const setTransactionProject = (index: number, projectId: string) => {
+    setTransactions((prev) =>
+      prev.map((t, i) => (i === index ? { ...t, projectId } : t))
+    );
+    // Clear bulk selection if individual project differs
+    setBulkProjectId(undefined);
+  };
+
+  // Check if all selected transactions have a project
+  const allHaveProject = transactions
+    .filter((t) => t.selected)
+    .every((t) => t.projectId);
 
   // Extract unique new contacts (where existingContactId is null/undefined)
   const newContacts = useMemo(() => {
@@ -129,8 +154,18 @@ export default function BulkTransactionsScreen() {
       return;
     }
 
+    // Validate all selected transactions have a project
+    const missingProject = selectedTransactions.find((t) => !t.projectId);
+    if (missingProject) {
+      showError("All transactions must have a project assigned");
+      return;
+    }
+
     setIsCreating(true);
     try {
+      // Flag for review if overall confidence is low (below 70%)
+      const needsReview = confidence < 0.7;
+
       const result = await FinanceService.createBulkTransactions({
         transactions: selectedTransactions.map((t) => ({
           amount: t.amount,
@@ -142,6 +177,8 @@ export default function BulkTransactionsScreen() {
           categoryId: t.categoryId,
           projectId: t.projectId,
           description: t.description,
+          needsReview,
+          confidence,
         })),
         rawInputId,
       });
@@ -284,6 +321,56 @@ export default function BulkTransactionsScreen() {
         </View>
       )}
 
+      {/* Bulk Project Selector */}
+      {projects.length > 0 && (
+        <View className="bg-white mx-4 mt-4 p-4 rounded-2xl" style={styles.card}>
+          <View className="flex-row items-center mb-3">
+            <Lucide name="folder" size={16} color={COLORS.primary} />
+            <Text className="text-sm font-semibold text-gray-900 ml-2">
+              Assign Project
+            </Text>
+            <Text className="text-xs text-error ml-1">*</Text>
+          </View>
+          <Text className="text-xs text-gray-500 mb-3">
+            Select a project for all transactions, or set individually below.
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
+            <View className="flex-row px-1 gap-2">
+              {projects.map((project) => (
+                <Pressable
+                  key={project.id}
+                  onPress={() => applyBulkProject(project.id)}
+                  style={[
+                    styles.projectChip,
+                    bulkProjectId === project.id && styles.projectChipActive,
+                  ]}
+                  className="px-3 py-2 rounded-lg flex-row items-center"
+                >
+                  <View
+                    style={[styles.projectDot, { backgroundColor: project.color || COLORS.primary }]}
+                  />
+                  <Text
+                    className={`text-sm font-medium ml-2 ${
+                      bulkProjectId === project.id ? "text-white" : "text-gray-700"
+                    }`}
+                  >
+                    {project.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+          {!allHaveProject && (
+            <View className="flex-row items-center mt-3 pt-3 border-t border-gray-100">
+              <Lucide name="alert-circle" size={14} color={COLORS.error} />
+              <Text className="text-xs text-error ml-1.5">
+                Some transactions don't have a project assigned
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Total */}
       <View className="bg-white mx-4 mt-4 p-4 rounded-2xl" style={styles.card}>
         <Text className="text-sm text-gray-500">Net Total (selected)</Text>
@@ -378,14 +465,54 @@ export default function BulkTransactionsScreen() {
                         </Text>
                       </View>
                     )}
-                    {transaction.projectId && (
-                      <View style={styles.chip} className="px-2 py-1 rounded-md">
-                        <Text className="text-xs text-gray-600">
-                          {projects.find((p: { id: string }) => p.id === transaction.projectId)?.name || "Project"}
-                        </Text>
-                      </View>
-                    )}
                   </View>
+
+                  {/* Project Selector */}
+                  {transaction.selected && (
+                    <View className="mt-2 pt-2 border-t border-gray-100">
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
+                        <View className="flex-row px-1 gap-1.5">
+                          {projects.map((project) => {
+                            const isSelected = transaction.projectId === project.id;
+                            return (
+                              <Pressable
+                                key={project.id}
+                                onPress={(e) => {
+                                  e.stopPropagation();
+                                  setTransactionProject(index, project.id);
+                                }}
+                                style={[
+                                  styles.miniProjectChip,
+                                  isSelected && styles.miniProjectChipActive,
+                                ]}
+                                className="px-2 py-1 rounded-md flex-row items-center"
+                              >
+                                <View
+                                  style={[
+                                    styles.miniProjectDot,
+                                    { backgroundColor: project.color || COLORS.primary },
+                                  ]}
+                                />
+                                <Text
+                                  className={`text-xs font-medium ml-1 ${
+                                    isSelected ? "text-white" : "text-gray-600"
+                                  }`}
+                                >
+                                  {project.name}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      </ScrollView>
+                      {!transaction.projectId && (
+                        <View className="flex-row items-center mt-1">
+                          <Lucide name="alert-circle" size={10} color={COLORS.error} />
+                          <Text className="text-xs text-error ml-1">Project required</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
                 </View>
               </View>
             </Pressable>
@@ -452,6 +579,33 @@ const styles = StyleSheet.create({
   },
   typeChipActive: {
     backgroundColor: COLORS.primary,
+  },
+  projectChip: {
+    backgroundColor: COLORS.gray100,
+  },
+  projectChipActive: {
+    backgroundColor: COLORS.primary,
+  },
+  projectDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  projectDropdown: {
+    backgroundColor: COLORS.gray50,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  miniProjectChip: {
+    backgroundColor: COLORS.gray100,
+  },
+  miniProjectChipActive: {
+    backgroundColor: COLORS.primary,
+  },
+  miniProjectDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   createButton: {
     backgroundColor: COLORS.primary,

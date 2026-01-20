@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,17 +9,31 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
+import { useFocusEffect } from "expo-router";
 import Constants from "expo-constants";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "expo-router";
 import { COLORS, ROUTES } from "@/constants";
 import { useToast } from "@/hooks/useToast";
+import { FinanceService } from "@/services";
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
   const { showSuccess, showError } = useToast();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [flaggedCount, setFlaggedCount] = useState(0);
+
+  // Fetch flagged count on focus
+  useFocusEffect(
+    useCallback(() => {
+      FinanceService.getFlaggedCount().then((result) => {
+        if (result.success) {
+          setFlaggedCount(result.data.count);
+        }
+      });
+    }, [])
+  );
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
@@ -57,6 +71,22 @@ export default function ProfileScreen() {
         },
       ],
     },
+    ...(flaggedCount > 0
+      ? [
+          {
+            title: "Review",
+            items: [
+              {
+                icon: "alert-triangle",
+                label: "Flagged Transactions",
+                subtitle: `${flaggedCount} transaction${flaggedCount !== 1 ? "s" : ""} need review`,
+                route: ROUTES.FLAGGED_TRANSACTIONS,
+                badge: flaggedCount,
+              },
+            ],
+          },
+        ]
+      : []),
     {
       title: "Business Settings",
       items: [
@@ -145,17 +175,36 @@ export default function ProfileScreen() {
               <Pressable
                 key={item.label}
                 onPress={() => item.route && router.push(item.route as any)}
-                style={styles.menuItem}
+                style={[
+                  styles.menuItem,
+                  "badge" in item && item.badge ? styles.menuItemHighlighted : null,
+                ]}
                 className={`${itemIndex < section.items.length - 1 ? "mb-2" : ""} flex-row items-center justify-between rounded-xl px-4 py-3.5 active:bg-gray-100`}
               >
                 <View className="flex-row items-center flex-1">
-                  <View style={styles.iconContainer}>
-                    <Lucide name={item.icon as any} size={18} color={COLORS.primary} />
+                  <View
+                    style={[
+                      styles.iconContainer,
+                      "badge" in item && item.badge ? styles.iconContainerWarning : null,
+                    ]}
+                  >
+                    <Lucide
+                      name={item.icon as any}
+                      size={18}
+                      color={"badge" in item && item.badge ? "#F59E0B" : COLORS.primary}
+                    />
                   </View>
                   <View className="ml-3 flex-1">
-                    <Text className="text-[15px] font-semibold text-gray-900">
-                      {item.label}
-                    </Text>
+                    <View className="flex-row items-center">
+                      <Text className="text-[15px] font-semibold text-gray-900">
+                        {item.label}
+                      </Text>
+                      {"badge" in item && item.badge ? (
+                        <View style={styles.badge} className="ml-2 px-2 py-0.5 rounded-full">
+                          <Text className="text-xs font-semibold text-white">{item.badge}</Text>
+                        </View>
+                      ) : null}
+                    </View>
                     <Text className="text-xs text-gray-500">
                       {item.subtitle}
                     </Text>
@@ -220,6 +269,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.gray200,
   },
+  menuItemHighlighted: {
+    backgroundColor: "#FFFBEB",
+    borderColor: "#FCD34D",
+  },
   iconContainer: {
     width: 36,
     height: 36,
@@ -227,6 +280,12 @@ const styles = StyleSheet.create({
     backgroundColor: `${COLORS.primary}15`,
     alignItems: "center",
     justifyContent: "center",
+  },
+  iconContainerWarning: {
+    backgroundColor: "#FEF3C7",
+  },
+  badge: {
+    backgroundColor: "#F59E0B",
   },
   chevronContainer: {
     width: 28,

@@ -110,6 +110,8 @@ export interface ITransaction {
   rawInputId?: string;
   isRecurring: boolean;
   recurringGroupId?: string; // To group recurring transactions
+  needsReview?: boolean; // Flagged for manual review
+  confidence?: number; // AI confidence score (0-1)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -281,8 +283,19 @@ export interface CreateBulkTransactionsRequest {
     categoryId?: string;
     projectId?: string;
     description?: string;
+    needsReview?: boolean; // Flag for manual review
+    confidence?: number; // AI confidence score
   }>;
   rawInputId?: string;
+}
+
+/**
+ * Response from getFlaggedTransactions cloud function
+ */
+export interface GetFlaggedTransactionsResponse {
+  transactions: Array<ITransaction>;
+  total: number;
+  hasMore: boolean;
 }
 
 /**

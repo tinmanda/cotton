@@ -48,6 +48,7 @@ function RootLayoutInner() {
         <Stack.Screen name="projects/[id]" />
         <Stack.Screen name="transactions/[id]/edit" />
         <Stack.Screen name="transactions/bulk" />
+        <Stack.Screen name="transactions/flagged" />
         <Stack.Screen name="settings/employees" />
         <Stack.Screen name="settings/contacts" />
         <Stack.Screen name="settings/categories" />
