@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Modal,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { COLORS, ROUTES } from "@/constants";
@@ -33,6 +33,7 @@ export default function EditTransactionScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { showSuccess, showError } = useToast();
+  const insets = useSafeAreaInsets();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -176,7 +177,7 @@ export default function EditTransactionScreen() {
 
   // Filter contacts by type (suppliers for expense, customers for income)
   const relevantContactType = type === "expense" ? "supplier" : "customer";
-  const filteredContacts = contacts.filter((c) => c.type === relevantContactType);
+  const filteredContacts = contacts.filter((c) => c.types?.includes(relevantContactType));
 
   // Recently used contacts (top 5 by transaction count)
   const recentlyUsedContacts = [...filteredContacts]
@@ -514,25 +515,24 @@ export default function EditTransactionScreen() {
       </Modal>
 
       {/* Contact Picker Modal */}
-      <Modal visible={showContactPicker} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.pickerModal} className="bg-white rounded-t-3xl">
-            {/* Header */}
-            <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-100">
-              <Text className="text-lg font-semibold text-gray-900">Select Contact</Text>
-              <Pressable
-                onPress={() => {
-                  setShowContactPicker(false);
-                  setShowAddContactInput(false);
-                  setNewContactName("");
-                }}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Lucide name="x" size={24} color={COLORS.gray500} />
-              </Pressable>
-            </View>
+      <Modal visible={showContactPicker} transparent={false} animationType="slide">
+        <View style={[styles.fullScreenModal, { paddingTop: insets.top }]}>
+          {/* Header */}
+          <View style={styles.pickerHeader}>
+            <Pressable
+              onPress={() => {
+                setShowContactPicker(false);
+                setShowAddContactInput(false);
+                setNewContactName("");
+              }}
+              className="h-9 w-9 items-center justify-center rounded-full bg-gray-100"
+            >
+              <Lucide name="x" size={18} color={COLORS.gray600} />
+            </Pressable>
+            <Text style={styles.pickerTitle}>Select Contact</Text>
+          </View>
 
-            <ScrollView style={{ maxHeight: 450 }} showsVerticalScrollIndicator={false}>
+          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
               {/* Add New Contact Row */}
               {showAddContactInput ? (
                 <View className="px-4 py-3 border-b border-gray-100">
@@ -678,7 +678,6 @@ export default function EditTransactionScreen() {
               {/* Bottom padding */}
               <View className="h-6" />
             </ScrollView>
-          </View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -745,12 +744,23 @@ const styles = StyleSheet.create({
   confirmDeleteButton: {
     backgroundColor: COLORS.error,
   },
-  pickerModal: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    maxHeight: "80%",
+  fullScreenModal: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+  },
+  pickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray100,
+  },
+  pickerTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: COLORS.gray900,
+    marginLeft: 12,
   },
   contactIcon: {
     width: 36,
