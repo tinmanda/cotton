@@ -13,13 +13,13 @@ module.exports = {
     newArchEnabled: true,
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.yourcompany.cotton",
+      bundleIdentifier: "com.tinmen.cotton",
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
       },
     },
     android: {
-      package: "com.yourcompany.cotton",
+      package: "com.tinmen.cotton",
       adaptiveIcon: {
         foregroundImage: "./assets/images/adaptive-icon.png",
         backgroundColor: "#3b82f6",
