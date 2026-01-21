@@ -3,7 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  FlatList,
   Pressable,
   TextInput,
   StyleSheet,
@@ -53,6 +52,7 @@ export default function EditTransactionScreen() {
   const [contactId, setContactId] = useState<string | null>(null);
   const [contactName, setContactName] = useState("");
   const [showContactPicker, setShowContactPicker] = useState(false);
+  const [showAddContactInput, setShowAddContactInput] = useState(false);
   const [newContactName, setNewContactName] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -177,6 +177,17 @@ export default function EditTransactionScreen() {
   // Filter contacts by type (suppliers for expense, customers for income)
   const relevantContactType = type === "expense" ? "supplier" : "customer";
   const filteredContacts = contacts.filter((c) => c.type === relevantContactType);
+
+  // Recently used contacts (top 5 by transaction count)
+  const recentlyUsedContacts = [...filteredContacts]
+    .sort((a, b) => (b.transactionCount || 0) - (a.transactionCount || 0))
+    .slice(0, 5);
+
+  // All contacts sorted alphabetically (excluding recently used)
+  const recentlyUsedIds = new Set(recentlyUsedContacts.map((c) => c.id));
+  const allOtherContacts = filteredContacts
+    .filter((c) => !recentlyUsedIds.has(c.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   if (isLoading) {
     return (
@@ -324,6 +335,7 @@ export default function EditTransactionScreen() {
             <Pressable
               onPress={() => {
                 setNewContactName("");
+                setShowAddContactInput(false);
                 setShowContactPicker(true);
               }}
               className="bg-gray-100 rounded-xl px-4 py-3.5 flex-row items-center justify-between"
@@ -509,81 +521,163 @@ export default function EditTransactionScreen() {
             <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-100">
               <Text className="text-lg font-semibold text-gray-900">Select Contact</Text>
               <Pressable
-                onPress={() => setShowContactPicker(false)}
+                onPress={() => {
+                  setShowContactPicker(false);
+                  setShowAddContactInput(false);
+                  setNewContactName("");
+                }}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <Lucide name="x" size={24} color={COLORS.gray500} />
               </Pressable>
             </View>
 
-            {/* New Contact Input */}
-            <View className="px-4 py-3 border-b border-gray-100">
-              <View className="bg-gray-100 rounded-xl px-4 py-3 flex-row items-center">
-                <Lucide name="plus" size={18} color={COLORS.gray500} />
-                <TextInput
-                  value={newContactName}
-                  onChangeText={setNewContactName}
-                  placeholder="Add new contact..."
-                  placeholderTextColor={COLORS.gray400}
-                  style={{ flex: 1, marginLeft: 12, fontSize: 16, color: COLORS.gray900 }}
-                />
-                {newContactName.trim().length > 0 && (
-                  <Pressable
-                    onPress={() => {
-                      setContactId(null);
-                      setContactName(newContactName.trim());
-                      setNewContactName("");
-                      setShowContactPicker(false);
-                    }}
-                    className="bg-primary px-3 py-1.5 rounded-lg"
-                  >
-                    <Text className="text-white text-sm font-medium">Add</Text>
-                  </Pressable>
-                )}
-              </View>
-            </View>
-
-            {/* Contact List */}
-            <FlatList
-              data={filteredContacts}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <Pressable
-                  onPress={() => {
-                    setContactId(item.id);
-                    setContactName(item.name);
-                    setShowContactPicker(false);
-                  }}
-                  className="flex-row items-center px-4 py-3.5 border-b border-gray-50 active:bg-gray-50"
-                >
-                  <View style={styles.contactIcon}>
-                    <Lucide
-                      name={type === "expense" ? "store" : "user"}
-                      size={16}
-                      color={COLORS.primary}
+            <ScrollView style={{ maxHeight: 450 }} showsVerticalScrollIndicator={false}>
+              {/* Add New Contact Row */}
+              {showAddContactInput ? (
+                <View className="px-4 py-3 border-b border-gray-100">
+                  <View className="bg-gray-100 rounded-xl px-4 py-3 flex-row items-center">
+                    <Lucide name="user-plus" size={18} color={COLORS.primary} />
+                    <TextInput
+                      value={newContactName}
+                      onChangeText={setNewContactName}
+                      placeholder="Enter contact name"
+                      placeholderTextColor={COLORS.gray400}
+                      autoFocus
+                      style={{ flex: 1, marginLeft: 12, fontSize: 16, color: COLORS.gray900 }}
                     />
                   </View>
-                  <View className="flex-1 ml-3">
-                    <Text className="text-base text-gray-900">{item.name}</Text>
-                    <Text className="text-xs text-gray-500">
-                      {item.transactionCount} transaction{item.transactionCount !== 1 ? "s" : ""}
-                    </Text>
+                  <View className="flex-row gap-2 mt-3">
+                    <Pressable
+                      onPress={() => {
+                        setShowAddContactInput(false);
+                        setNewContactName("");
+                      }}
+                      className="flex-1 py-2.5 rounded-lg bg-gray-100"
+                    >
+                      <Text className="text-center text-sm font-medium text-gray-600">Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        if (newContactName.trim()) {
+                          setContactId(null);
+                          setContactName(newContactName.trim());
+                          setNewContactName("");
+                          setShowAddContactInput(false);
+                          setShowContactPicker(false);
+                        }
+                      }}
+                      disabled={!newContactName.trim()}
+                      className={`flex-1 py-2.5 rounded-lg ${newContactName.trim() ? "bg-primary" : "bg-gray-200"}`}
+                    >
+                      <Text className={`text-center text-sm font-medium ${newContactName.trim() ? "text-white" : "text-gray-400"}`}>
+                        Add
+                      </Text>
+                    </Pressable>
                   </View>
-                  {contactId === item.id && (
-                    <Lucide name="check" size={20} color={COLORS.primary} />
-                  )}
+                </View>
+              ) : (
+                <Pressable
+                  onPress={() => setShowAddContactInput(true)}
+                  className="flex-row items-center px-4 py-3.5 border-b border-gray-100 active:bg-gray-50"
+                >
+                  <View style={[styles.contactIcon, { backgroundColor: `${COLORS.success}15` }]}>
+                    <Lucide name="plus" size={18} color={COLORS.success} />
+                  </View>
+                  <Text className="ml-3 text-base text-gray-900 font-medium">Add new contact</Text>
                 </Pressable>
               )}
-              ListEmptyComponent={
+
+              {/* Recently Used Section */}
+              {recentlyUsedContacts.length > 0 && (
+                <View>
+                  <View className="px-4 pt-4 pb-2">
+                    <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                      Recently Used
+                    </Text>
+                  </View>
+                  {recentlyUsedContacts.map((item) => (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => {
+                        setContactId(item.id);
+                        setContactName(item.name);
+                        setShowContactPicker(false);
+                      }}
+                      className="flex-row items-center px-4 py-3 active:bg-gray-50"
+                    >
+                      <View style={styles.contactIcon}>
+                        <Lucide
+                          name={type === "expense" ? "store" : "user"}
+                          size={16}
+                          color={COLORS.primary}
+                        />
+                      </View>
+                      <View className="flex-1 ml-3">
+                        <Text className="text-base text-gray-900">{item.name}</Text>
+                        <Text className="text-xs text-gray-500">
+                          {item.transactionCount} transaction{item.transactionCount !== 1 ? "s" : ""}
+                        </Text>
+                      </View>
+                      {contactId === item.id && (
+                        <Lucide name="check" size={20} color={COLORS.primary} />
+                      )}
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+
+              {/* All Contacts Section */}
+              {allOtherContacts.length > 0 && (
+                <View>
+                  <View className="px-4 pt-4 pb-2">
+                    <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                      All Contacts
+                    </Text>
+                  </View>
+                  {allOtherContacts.map((item) => (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => {
+                        setContactId(item.id);
+                        setContactName(item.name);
+                        setShowContactPicker(false);
+                      }}
+                      className="flex-row items-center px-4 py-3 active:bg-gray-50"
+                    >
+                      <View style={styles.contactIcon}>
+                        <Lucide
+                          name={type === "expense" ? "store" : "user"}
+                          size={16}
+                          color={COLORS.primary}
+                        />
+                      </View>
+                      <View className="flex-1 ml-3">
+                        <Text className="text-base text-gray-900">{item.name}</Text>
+                        <Text className="text-xs text-gray-500">
+                          {item.transactionCount} transaction{item.transactionCount !== 1 ? "s" : ""}
+                        </Text>
+                      </View>
+                      {contactId === item.id && (
+                        <Lucide name="check" size={20} color={COLORS.primary} />
+                      )}
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+
+              {/* Empty State */}
+              {filteredContacts.length === 0 && !showAddContactInput && (
                 <View className="items-center py-8">
                   <Lucide name="users" size={32} color={COLORS.gray300} />
                   <Text className="text-gray-400 mt-2">No contacts yet</Text>
-                  <Text className="text-gray-400 text-sm">Add one above</Text>
+                  <Text className="text-gray-400 text-sm">Tap above to add one</Text>
                 </View>
-              }
-              style={{ maxHeight: 400 }}
-              showsVerticalScrollIndicator={false}
-            />
+              )}
+
+              {/* Bottom padding */}
+              <View className="h-6" />
+            </ScrollView>
           </View>
         </View>
       </Modal>
