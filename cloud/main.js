@@ -1498,11 +1498,11 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
 
   for (const txData of transactions) {
     const {
-      amount,
-      currency,
-      type,
-      date,
-      contactName,
+      amount: rawAmount,
+      currency: rawCurrency,
+      type: rawType,
+      date: rawDate,
+      contactName: rawContactName,
       contactType, // Optional: override for contact type (customer, supplier, employee)
       categoryId,
       projectId,
@@ -1511,8 +1511,25 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
       confidence, // AI confidence score
     } = txData;
 
-    if (!amount || !currency || !type || !date || !contactName) {
-      continue; // Skip invalid transactions
+    // Check for missing required fields and use placeholders
+    const missingFields = [];
+    if (!rawAmount && rawAmount !== 0) missingFields.push("amount");
+    if (!rawCurrency) missingFields.push("currency");
+    if (!rawType) missingFields.push("type");
+    if (!rawDate) missingFields.push("date");
+    if (!rawContactName) missingFields.push("contact");
+
+    const isIncomplete = missingFields.length > 0;
+
+    // Use placeholders for missing fields
+    const amount = rawAmount || 0;
+    const currency = rawCurrency || "INR";
+    const type = rawType || "expense";
+    const date = rawDate || new Date().toISOString();
+    const contactName = rawContactName || "Unknown";
+
+    if (isIncomplete) {
+      console.log(`[createBulkTransactions] Saving incomplete transaction (missing: ${missingFields.join(", ")})`);
     }
 
     // Find or create contact
@@ -1615,6 +1632,13 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
       transaction.set("confidence", confidence);
     }
 
+    // Flag incomplete transactions (highest priority)
+    if (isIncomplete) {
+      transaction.set("needsReview", true);
+      transaction.set("reviewReason", "incomplete");
+      transaction.set("missingFields", missingFields); // Store which fields are missing
+    }
+
     if (rawInputId) {
       const rawInputPointer = Parse.Object.extend("RawInput").createWithoutData(rawInputId);
       transaction.set("rawInput", rawInputPointer);
@@ -1623,26 +1647,28 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
     setUserACL(transaction, user);
     await transaction.save(null, { useMasterKey: true });
 
-    // Check for potential duplicates
-    const duplicateIds = await findPotentialDuplicates(
-      user,
-      amount,
-      contactName.trim(),
-      transactionDate,
-      transaction.id
-    );
+    // Only check for duplicates if not already flagged as incomplete
+    if (!isIncomplete) {
+      const duplicateIds = await findPotentialDuplicates(
+        user,
+        amount,
+        contactName.trim(),
+        transactionDate,
+        transaction.id
+      );
 
-    if (duplicateIds.length > 0) {
-      // Mark this transaction as potential duplicate
-      transaction.set("needsReview", true);
-      transaction.set("reviewReason", "potential_duplicate");
-      transaction.set("potentialDuplicateIds", duplicateIds);
-      await transaction.save(null, { useMasterKey: true });
-      console.log(`[createBulkTransactions] Flagged transaction ${transaction.id} as potential duplicate of: ${duplicateIds.join(", ")}`);
-    } else if (needsReview) {
-      // Set review reason for low confidence
-      transaction.set("reviewReason", "low_confidence");
-      await transaction.save(null, { useMasterKey: true });
+      if (duplicateIds.length > 0) {
+        // Mark this transaction as potential duplicate
+        transaction.set("needsReview", true);
+        transaction.set("reviewReason", "potential_duplicate");
+        transaction.set("potentialDuplicateIds", duplicateIds);
+        await transaction.save(null, { useMasterKey: true });
+        console.log(`[createBulkTransactions] Flagged transaction ${transaction.id} as potential duplicate of: ${duplicateIds.join(", ")}`);
+      } else if (needsReview) {
+        // Set review reason for low confidence
+        transaction.set("reviewReason", "low_confidence");
+        await transaction.save(null, { useMasterKey: true });
+      }
     }
 
     // Update contact totals
@@ -2469,6 +2495,7 @@ Parse.Cloud.define("getFlaggedTransactions", async (request) => {
       needsReview: t.get("needsReview"),
       reviewReason: t.get("reviewReason"),
       potentialDuplicateIds: t.get("potentialDuplicateIds"),
+      missingFields: t.get("missingFields"),
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     })),

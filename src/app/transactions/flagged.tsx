@@ -115,6 +115,7 @@ export default function FlaggedTransactionsScreen() {
   };
 
   // Count by reason
+  const incompleteCount = transactions.filter(t => t.reviewReason === "incomplete").length;
   const lowConfidenceCount = transactions.filter(t => t.reviewReason === "low_confidence").length;
   const duplicateCount = transactions.filter(t => t.reviewReason === "potential_duplicate").length;
 
@@ -138,8 +139,24 @@ export default function FlaggedTransactionsScreen() {
       </View>
 
       {/* Info Banners */}
+      {incompleteCount > 0 && (
+        <View className="bg-purple-50 mx-4 mt-4 p-4 rounded-2xl border border-purple-200">
+          <View className="flex-row items-start">
+            <Lucide name="file-question" size={20} color="#9333EA" />
+            <View className="ml-3 flex-1">
+              <Text className="text-sm font-medium text-purple-900">
+                Incomplete ({incompleteCount})
+              </Text>
+              <Text className="text-xs text-purple-700 mt-1">
+                These transactions are missing required data. Please complete or delete them.
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
       {lowConfidenceCount > 0 && (
-        <View className="bg-amber-50 mx-4 mt-4 p-4 rounded-2xl border border-amber-200">
+        <View className="bg-amber-50 mx-4 mt-3 p-4 rounded-2xl border border-amber-200">
           <View className="flex-row items-start">
             <Lucide name="alert-triangle" size={20} color="#F59E0B" />
             <View className="ml-3 flex-1">
@@ -245,6 +262,24 @@ function TransactionCard({
 }: TransactionCardProps) {
   const confidencePercent = Math.round((transaction.confidence || 0) * 100);
   const isDuplicate = transaction.reviewReason === "potential_duplicate";
+  const isIncomplete = transaction.reviewReason === "incomplete";
+
+  // Determine icon and color based on review reason
+  const getIconConfig = () => {
+    if (isIncomplete) {
+      return { name: "file-question" as const, color: "#9333EA", bg: "#F3E8FF" };
+    }
+    if (isDuplicate) {
+      return { name: "copy" as const, color: COLORS.error, bg: `${COLORS.error}15` };
+    }
+    return {
+      name: transaction.type === "expense" ? "arrow-up-right" as const : "arrow-down-left" as const,
+      color: transaction.type === "expense" ? COLORS.error : COLORS.success,
+      bg: transaction.type === "expense" ? `${COLORS.error}15` : `${COLORS.success}15`,
+    };
+  };
+
+  const iconConfig = getIconConfig();
 
   return (
     <View style={styles.card} className="mx-4 mb-3 bg-white rounded-2xl p-4">
@@ -253,19 +288,13 @@ function TransactionCard({
         <View
           style={[
             styles.typeIcon,
-            {
-              backgroundColor: isDuplicate
-                ? `${COLORS.error}15`
-                : transaction.type === "expense"
-                ? `${COLORS.error}15`
-                : `${COLORS.success}15`,
-            },
+            { backgroundColor: iconConfig.bg },
           ]}
         >
           <Lucide
-            name={isDuplicate ? "copy" : transaction.type === "expense" ? "arrow-up-right" : "arrow-down-left"}
+            name={iconConfig.name}
             size={18}
-            color={isDuplicate ? COLORS.error : transaction.type === "expense" ? COLORS.error : COLORS.success}
+            color={iconConfig.color}
           />
         </View>
 
@@ -304,8 +333,24 @@ function TransactionCard({
           )}
 
           {/* Reason Badge */}
-          <View className="flex-row items-center mt-2">
-            {isDuplicate ? (
+          <View className="flex-row items-center flex-wrap mt-2 gap-1">
+            {isIncomplete ? (
+              <>
+                <View
+                  style={styles.incompleteBadge}
+                  className="px-2 py-0.5 rounded-full"
+                >
+                  <Text className="text-xs font-medium text-purple-700">
+                    Incomplete
+                  </Text>
+                </View>
+                {transaction.missingFields && transaction.missingFields.length > 0 && (
+                  <Text className="text-xs text-gray-500">
+                    Missing: {transaction.missingFields.join(", ")}
+                  </Text>
+                )}
+              </>
+            ) : isDuplicate ? (
               <View
                 style={styles.duplicateBadge}
                 className="px-2 py-0.5 rounded-full"
@@ -383,7 +428,36 @@ function TransactionCard({
 
       {/* Actions */}
       <View className="flex-row mt-3 pt-3 border-t border-gray-100 gap-2">
-        {isDuplicate ? (
+        {isIncomplete ? (
+          // Incomplete: Edit to complete or Delete if garbage
+          <>
+            <Pressable
+              onPress={onEdit}
+              className="flex-1 flex-row items-center justify-center py-2.5 rounded-xl"
+              style={styles.editButton}
+            >
+              <Lucide name="pencil" size={16} color={COLORS.primary} />
+              <Text className="text-sm font-medium text-primary ml-2">Complete</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={onDelete}
+              disabled={isMarking}
+              className="flex-1 flex-row items-center justify-center py-2.5 rounded-xl"
+              style={[styles.deleteButton, isMarking && styles.buttonDisabled]}
+            >
+              {isMarking ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <>
+                  <Lucide name="trash-2" size={16} color={COLORS.white} />
+                  <Text className="text-sm font-medium text-white ml-2">Delete</Text>
+                </>
+              )}
+            </Pressable>
+          </>
+        ) : isDuplicate ? (
+          // Duplicate: Mark as not duplicate or Delete
           <>
             <Pressable
               onPress={onMarkReviewed}
@@ -412,6 +486,7 @@ function TransactionCard({
             </Pressable>
           </>
         ) : (
+          // Low confidence: Edit or Mark as reviewed
           <>
             <Pressable
               onPress={onEdit}
@@ -477,6 +552,9 @@ const styles = StyleSheet.create({
   confidenceBadge: {},
   duplicateBadge: {
     backgroundColor: "#FEE2E2",
+  },
+  incompleteBadge: {
+    backgroundColor: "#F3E8FF",
   },
   duplicateRow: {
     backgroundColor: COLORS.gray50,

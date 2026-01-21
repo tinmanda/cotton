@@ -112,8 +112,9 @@ export interface ITransaction {
   recurringGroupId?: string; // To group recurring transactions
   needsReview?: boolean; // Flagged for manual review
   confidence?: number; // AI confidence score (0-1)
-  reviewReason?: "low_confidence" | "potential_duplicate"; // Why flagged
+  reviewReason?: "low_confidence" | "potential_duplicate" | "incomplete"; // Why flagged
   potentialDuplicateIds?: string[]; // IDs of similar transactions
+  missingFields?: string[]; // Fields that are missing (for incomplete transactions)
   createdAt: Date;
   updatedAt: Date;
 }
