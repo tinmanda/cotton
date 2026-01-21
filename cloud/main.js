@@ -314,6 +314,8 @@ async function callAnthropicWithMedia(systemPrompt, textMessage, mediaFiles = []
 
   // Use Sonnet for PDFs (Haiku doesn't support PDF input), Haiku for images only
   const model = hasPdf ? "claude-sonnet-4-20250514" : "claude-3-haiku-20240307";
+  // PDFs can have many transactions, so use much higher max_tokens (16K for buffer)
+  const maxTokens = hasPdf ? 16384 : 4096;
 
   let response;
   try {
@@ -326,7 +328,7 @@ async function callAnthropicWithMedia(systemPrompt, textMessage, mediaFiles = []
       },
       body: JSON.stringify({
         model,
-        max_tokens: 4096,
+        max_tokens: maxTokens,
         system: systemPrompt,
         messages: [{ role: "user", content }],
       }),
@@ -1452,7 +1454,58 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
     if (jsonMatch) {
       jsonStr = jsonMatch[0];
     }
-    parsedData = JSON.parse(jsonStr);
+
+    // Try to parse, with fallback for truncated JSON
+    try {
+      parsedData = JSON.parse(jsonStr);
+    } catch (jsonError) {
+      console.log("[parseTransactionInput] Initial JSON parse failed, attempting repair...");
+      console.log("[parseTransactionInput] Raw response length:", aiResponse.length);
+
+      // Try to repair truncated JSON by closing open arrays/objects
+      let repairedJson = jsonStr;
+
+      // Count open brackets
+      const openBraces = (repairedJson.match(/\{/g) || []).length;
+      const closeBraces = (repairedJson.match(/\}/g) || []).length;
+      const openBrackets = (repairedJson.match(/\[/g) || []).length;
+      const closeBrackets = (repairedJson.match(/\]/g) || []).length;
+
+      // If we have unclosed brackets, try to close them
+      if (openBrackets > closeBrackets || openBraces > closeBraces) {
+        // Remove any trailing incomplete object/element (after last complete element)
+        // Look for the last complete transaction object ending with }
+        const lastCompleteIdx = repairedJson.lastIndexOf('}');
+        if (lastCompleteIdx > 0) {
+          // Check if there's incomplete data after the last }
+          const afterLast = repairedJson.substring(lastCompleteIdx + 1).trim();
+          if (afterLast.startsWith(',') || afterLast.match(/^\s*\{[^}]*$/)) {
+            // There's an incomplete element, truncate to last complete object
+            repairedJson = repairedJson.substring(0, lastCompleteIdx + 1);
+          }
+        }
+
+        // Re-count after potential truncation
+        const newOpenBrackets = (repairedJson.match(/\[/g) || []).length;
+        const newCloseBrackets = (repairedJson.match(/\]/g) || []).length;
+        const newOpenBraces = (repairedJson.match(/\{/g) || []).length;
+        const newCloseBraces = (repairedJson.match(/\}/g) || []).length;
+
+        // Close any remaining open brackets
+        for (let i = 0; i < newOpenBrackets - newCloseBrackets; i++) {
+          repairedJson += ']';
+        }
+        for (let i = 0; i < newOpenBraces - newCloseBraces; i++) {
+          repairedJson += '}';
+        }
+
+        console.log("[parseTransactionInput] Attempted JSON repair, retrying parse...");
+        parsedData = JSON.parse(repairedJson);
+        console.log("[parseTransactionInput] JSON repair successful!");
+      } else {
+        throw jsonError;
+      }
+    }
   } catch (error) {
     console.error("[parseTransactionInput] AI parsing error:", error);
     throw new Parse.Error(Parse.Error.SCRIPT_FAILED, `Failed to parse input: ${error.message}`);
