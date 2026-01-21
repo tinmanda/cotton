@@ -15,7 +15,7 @@ import { Lucide } from "@react-native-vector-icons/lucide";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
+import { File } from "expo-file-system";
 import { COLORS, ROUTES } from "@/constants";
 import { FinanceService } from "@/services";
 import {
@@ -219,23 +219,24 @@ export default function AddTransactionScreen() {
       const newFiles: SelectedFile[] = [];
       for (const asset of result.assets.slice(0, 5 - selectedFiles.length)) {
         try {
-          // First check if file is accessible
-          const fileInfo = await FileSystem.getInfoAsync(asset.uri);
-          if (!fileInfo.exists) {
+          // Use the new File API from expo-file-system
+          const file = new File(asset.uri);
+
+          // Check if file is accessible
+          if (!file.exists) {
             console.error("PDF file not accessible at URI:", asset.uri);
             showError("Could not access PDF file");
             continue;
           }
 
-          // Check file size (warn if over 10MB as base64 will be ~33% larger)
-          if (fileInfo.size && fileInfo.size > 10 * 1024 * 1024) {
+          // Check file size (max 10MB as base64 will be ~33% larger)
+          if (file.size && file.size > 10 * 1024 * 1024) {
             showError("PDF file is too large (max 10MB)");
             continue;
           }
 
-          const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
+          // Read file as base64 using new File API
+          const base64 = await file.base64();
 
           if (!base64 || base64.length === 0) {
             showError("PDF file appears to be empty");
