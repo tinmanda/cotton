@@ -135,6 +135,54 @@ async function convertToINR(amount, currency, date = new Date()) {
 }
 
 /**
+ * Find potential duplicate transactions
+ * Matches: same amount, similar contact name, date within ±3 days
+ * @param {Parse.User} user - The user
+ * @param {number} amount - Transaction amount
+ * @param {string} contactName - Contact name to match
+ * @param {Date} date - Transaction date
+ * @param {string} excludeId - Transaction ID to exclude (the one we just created)
+ * @returns {Promise<string[]>} Array of potential duplicate transaction IDs
+ */
+async function findPotentialDuplicates(user, amount, contactName, date, excludeId = null) {
+  const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+  const startDate = new Date(date.getTime() - threeDaysMs);
+  const endDate = new Date(date.getTime() + threeDaysMs);
+
+  // Query for transactions with same amount within date range
+  const query = new Parse.Query("Transaction");
+  query.equalTo("user", user);
+  query.equalTo("amount", amount);
+  query.greaterThanOrEqualTo("date", startDate);
+  query.lessThanOrEqualTo("date", endDate);
+  if (excludeId) {
+    query.notEqualTo("objectId", excludeId);
+  }
+  query.limit(10);
+
+  const potentialDuplicates = await query.find({ useMasterKey: true });
+
+  // Filter by contact name similarity (case-insensitive, trimmed)
+  const normalizedContactName = contactName.trim().toLowerCase();
+  const matches = [];
+
+  for (const t of potentialDuplicates) {
+    const txContactName = (t.get("contactName") || "").trim().toLowerCase();
+
+    // Check for exact match or if one name contains the other
+    if (
+      txContactName === normalizedContactName ||
+      txContactName.includes(normalizedContactName) ||
+      normalizedContactName.includes(txContactName)
+    ) {
+      matches.push(t.id);
+    }
+  }
+
+  return matches;
+}
+
+/**
  * Call Anthropic API (text only)
  */
 async function callAnthropic(systemPrompt, userMessage) {
@@ -1556,6 +1604,28 @@ Parse.Cloud.define("createBulkTransactions", async (request) => {
     setUserACL(transaction, user);
     await transaction.save(null, { useMasterKey: true });
 
+    // Check for potential duplicates
+    const duplicateIds = await findPotentialDuplicates(
+      user,
+      amount,
+      contactName.trim(),
+      transactionDate,
+      transaction.id
+    );
+
+    if (duplicateIds.length > 0) {
+      // Mark this transaction as potential duplicate
+      transaction.set("needsReview", true);
+      transaction.set("reviewReason", "potential_duplicate");
+      transaction.set("potentialDuplicateIds", duplicateIds);
+      await transaction.save(null, { useMasterKey: true });
+      console.log(`[createBulkTransactions] Flagged transaction ${transaction.id} as potential duplicate of: ${duplicateIds.join(", ")}`);
+    } else if (needsReview) {
+      // Set review reason for low confidence
+      transaction.set("reviewReason", "low_confidence");
+      await transaction.save(null, { useMasterKey: true });
+    }
+
     // Update contact totals
     if (type === "expense") {
       contact.increment("totalSpent", amount);
@@ -1724,6 +1794,24 @@ Parse.Cloud.define("createTransactionFromParsed", async (request) => {
   }
 
   await transaction.save(null, { useMasterKey: true });
+
+  // Check for potential duplicates
+  const duplicateIds = await findPotentialDuplicates(
+    user,
+    amount,
+    contact.get("name"),
+    transactionDate,
+    transaction.id
+  );
+
+  if (duplicateIds.length > 0) {
+    // Mark this transaction as potential duplicate
+    transaction.set("needsReview", true);
+    transaction.set("reviewReason", "potential_duplicate");
+    transaction.set("potentialDuplicateIds", duplicateIds);
+    await transaction.save(null, { useMasterKey: true });
+    console.log(`[createTransactionFromParsed] Flagged transaction ${transaction.id} as potential duplicate of: ${duplicateIds.join(", ")}`);
+  }
 
   // Update raw input status
   if (rawInputId) {
@@ -2316,6 +2404,33 @@ Parse.Cloud.define("getFlaggedTransactions", async (request) => {
 
   console.log(`[getFlaggedTransactions] Found ${results.length} flagged transactions for user ${user.id}`);
 
+  // Get potential duplicate details if needed
+  const duplicateIds = new Set();
+  for (const t of results) {
+    const ids = t.get("potentialDuplicateIds") || [];
+    ids.forEach((id) => duplicateIds.add(id));
+  }
+
+  // Fetch duplicate transactions for context
+  let duplicateTransactions = {};
+  if (duplicateIds.size > 0) {
+    const dupQuery = new Parse.Query("Transaction");
+    dupQuery.containedIn("objectId", Array.from(duplicateIds));
+    dupQuery.equalTo("user", user);
+    const dups = await dupQuery.find({ useMasterKey: true });
+    for (const d of dups) {
+      duplicateTransactions[d.id] = {
+        id: d.id,
+        amount: d.get("amount"),
+        currency: d.get("currency"),
+        type: d.get("type"),
+        date: d.get("date"),
+        contactName: d.get("contactName"),
+        projectName: d.get("projectName"),
+      };
+    }
+  }
+
   return {
     transactions: results.map((t) => ({
       id: t.id,
@@ -2333,9 +2448,12 @@ Parse.Cloud.define("getFlaggedTransactions", async (request) => {
       description: t.get("description"),
       confidence: t.get("confidence"),
       needsReview: t.get("needsReview"),
+      reviewReason: t.get("reviewReason"),
+      potentialDuplicateIds: t.get("potentialDuplicateIds"),
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     })),
+    duplicateTransactions,
     total,
     hasMore: skip + results.length < total,
   };

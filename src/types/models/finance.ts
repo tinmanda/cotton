@@ -112,6 +112,8 @@ export interface ITransaction {
   recurringGroupId?: string; // To group recurring transactions
   needsReview?: boolean; // Flagged for manual review
   confidence?: number; // AI confidence score (0-1)
+  reviewReason?: "low_confidence" | "potential_duplicate"; // Why flagged
+  potentialDuplicateIds?: string[]; // IDs of similar transactions
   createdAt: Date;
   updatedAt: Date;
 }
@@ -290,10 +292,24 @@ export interface CreateBulkTransactionsRequest {
 }
 
 /**
+ * Duplicate transaction summary (for display in flagged list)
+ */
+export interface DuplicateTransactionInfo {
+  id: string;
+  amount: number;
+  currency: Currency;
+  type: TransactionType;
+  date: Date | string;
+  contactName: string;
+  projectName?: string;
+}
+
+/**
  * Response from getFlaggedTransactions cloud function
  */
 export interface GetFlaggedTransactionsResponse {
   transactions: Array<ITransaction>;
+  duplicateTransactions: Record<string, DuplicateTransactionInfo>;
   total: number;
   hasMore: boolean;
 }

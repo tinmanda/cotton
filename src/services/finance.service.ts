@@ -556,13 +556,28 @@ export class FinanceService {
     limit?: number;
     skip?: number;
   }): Promise<
-    ApiResponse<{ transactions: ITransaction[]; total: number; hasMore: boolean }>
+    ApiResponse<{
+      transactions: ITransaction[];
+      duplicateTransactions: Record<string, { id: string; amount: number; currency: string; type: string; date: Date; contactName: string; projectName?: string }>;
+      total: number;
+      hasMore: boolean;
+    }>
   > {
     try {
       const result = await Parse.Cloud.run(
         CLOUD_FUNCTIONS.GET_FLAGGED_TRANSACTIONS,
         params
       );
+
+      // Convert duplicate transaction dates
+      const duplicateTransactions: Record<string, { id: string; amount: number; currency: string; type: string; date: Date; contactName: string; projectName?: string }> = {};
+      for (const [id, dup] of Object.entries(result.duplicateTransactions || {})) {
+        const d = dup as { id: string; amount: number; currency: string; type: string; date: string; contactName: string; projectName?: string };
+        duplicateTransactions[id] = {
+          ...d,
+          date: new Date(d.date),
+        };
+      }
 
       return successResponse({
         transactions: result.transactions.map((t: ITransaction) => ({
@@ -571,6 +586,7 @@ export class FinanceService {
           createdAt: new Date(t.createdAt),
           updatedAt: new Date(t.updatedAt),
         })),
+        duplicateTransactions,
         total: result.total,
         hasMore: result.hasMore,
       });
