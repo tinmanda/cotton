@@ -2321,6 +2321,41 @@ Parse.Cloud.define("updateTransaction", async (request) => {
     }
   }
 
+  // Check if we should clear the flagged status
+  const currentReviewReason = transaction.get("reviewReason");
+  const needsReview = transaction.get("needsReview");
+
+  if (needsReview) {
+    const currentAmount = transaction.get("amount");
+    const currentCurrency = transaction.get("currency");
+    const currentType = transaction.get("type");
+    const currentDate = transaction.get("date");
+    const currentContactName = transaction.get("contactName");
+
+    if (currentReviewReason === "incomplete") {
+      // For incomplete transactions, check if all required fields are now filled
+      const isComplete = currentAmount > 0 &&
+                        currentCurrency &&
+                        currentType &&
+                        currentDate &&
+                        currentContactName &&
+                        currentContactName !== "Unknown";
+
+      if (isComplete) {
+        transaction.set("needsReview", false);
+        transaction.unset("reviewReason");
+        transaction.unset("missingFields");
+        console.log(`[updateTransaction] Cleared incomplete flag - all fields now filled`);
+      }
+    } else if (currentReviewReason === "low_confidence") {
+      // For low confidence, user manually reviewed so clear the flag
+      transaction.set("needsReview", false);
+      transaction.unset("reviewReason");
+      console.log(`[updateTransaction] Cleared low_confidence flag - user reviewed`);
+    }
+    // Note: potential_duplicate is NOT auto-cleared - needs explicit resolution
+  }
+
   await transaction.save(null, { useMasterKey: true });
 
   // Update contact totals if amount or type changed

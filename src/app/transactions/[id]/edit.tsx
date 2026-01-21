@@ -14,7 +14,7 @@ import { Lucide } from "@react-native-vector-icons/lucide";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { COLORS, ROUTES } from "@/constants";
 import { FinanceService } from "@/services";
-import { ITransaction, ICategory, IProject, TransactionType, Currency } from "@/types";
+import { ITransaction, ICategory, IProject, IContact, TransactionType, Currency } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
 function formatDateForInput(date: Date): string {
@@ -42,13 +42,16 @@ export default function EditTransactionScreen() {
   const [transaction, setTransaction] = useState<ITransaction | null>(null);
   const [categories, setCategories] = useState<ICategory[]>([]);
   const [projects, setProjects] = useState<IProject[]>([]);
+  const [contacts, setContacts] = useState<IContact[]>([]);
 
   // Form state
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState<Currency>("INR");
   const [type, setType] = useState<TransactionType>("expense");
   const [date, setDate] = useState(formatDateForInput(new Date()));
+  const [contactId, setContactId] = useState<string | null>(null);
   const [contactName, setContactName] = useState("");
+  const [showNewContactInput, setShowNewContactInput] = useState(false);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [description, setDescription] = useState("");
@@ -57,14 +60,16 @@ export default function EditTransactionScreen() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [transResult, catResult, projResult] = await Promise.all([
+      const [transResult, catResult, projResult, contactsResult] = await Promise.all([
         FinanceService.getTransactions({ limit: 1000 }),
         FinanceService.getCategories(),
         FinanceService.getProjects(),
+        FinanceService.getContacts({}),
       ]);
 
       if (catResult.success) setCategories(catResult.data);
       if (projResult.success) setProjects(projResult.data);
+      if (contactsResult.success) setContacts(contactsResult.data);
 
       if (transResult.success) {
         const found = transResult.data.transactions.find((t) => t.id === id);
@@ -75,6 +80,7 @@ export default function EditTransactionScreen() {
           setCurrency(found.currency);
           setType(found.type);
           setDate(formatDateForInput(found.date));
+          setContactId(found.contactId || null);
           setContactName(found.contactName || "");
           setCategoryId(found.categoryId || null);
           setProjectId(found.projectId || null);
@@ -101,6 +107,7 @@ export default function EditTransactionScreen() {
       currency !== transaction.currency ||
       type !== transaction.type ||
       date !== formatDateForInput(transaction.date) ||
+      contactId !== (transaction.contactId || null) ||
       contactName !== (transaction.contactName || "") ||
       categoryId !== (transaction.categoryId || null) ||
       projectId !== (transaction.projectId || null) ||
@@ -164,6 +171,10 @@ export default function EditTransactionScreen() {
 
   // Filter categories by type
   const filteredCategories = categories.filter((c) => c.type === type);
+
+  // Filter contacts by type (suppliers for expense, customers for income)
+  const relevantContactType = type === "expense" ? "supplier" : "customer";
+  const filteredContacts = contacts.filter((c) => c.type === relevantContactType);
 
   if (isLoading) {
     return (
@@ -253,6 +264,10 @@ export default function EditTransactionScreen() {
                   onPress={() => {
                     setType(t);
                     setCategoryId(null); // Reset category when type changes
+                    // Reset contact when type changes (contacts are filtered by type)
+                    setContactId(null);
+                    setContactName("");
+                    setShowNewContactInput(false);
                   }}
                   style={[
                     styles.typeChip,
@@ -304,17 +319,88 @@ export default function EditTransactionScreen() {
 
           {/* Contact */}
           <View style={styles.card} className="bg-white rounded-2xl p-4 mb-3">
-            <Text className="text-sm font-medium text-gray-500 mb-2">Contact</Text>
-            <View className="bg-gray-100 rounded-xl px-4 py-3.5 flex-row items-center">
-              <Lucide name="user" size={18} color={COLORS.gray500} />
-              <TextInput
-                value={contactName}
-                onChangeText={setContactName}
-                placeholder="e.g., Amazon, Swiggy"
-                placeholderTextColor={COLORS.gray400}
-                style={{ flex: 1, marginLeft: 12, fontSize: 16, color: COLORS.gray900 }}
-              />
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-sm font-medium text-gray-500">Contact</Text>
+              {!showNewContactInput && (
+                <Pressable
+                  onPress={() => {
+                    setShowNewContactInput(true);
+                    setContactId(null);
+                  }}
+                  className="flex-row items-center"
+                >
+                  <Lucide name="plus" size={14} color={COLORS.primary} />
+                  <Text className="text-xs text-primary ml-1">New</Text>
+                </Pressable>
+              )}
             </View>
+
+            {showNewContactInput ? (
+              <View>
+                <View className="bg-gray-100 rounded-xl px-4 py-3.5 flex-row items-center">
+                  <Lucide name="user" size={18} color={COLORS.gray500} />
+                  <TextInput
+                    value={contactName}
+                    onChangeText={setContactName}
+                    placeholder="Enter contact name"
+                    placeholderTextColor={COLORS.gray400}
+                    autoFocus
+                    style={{ flex: 1, marginLeft: 12, fontSize: 16, color: COLORS.gray900 }}
+                  />
+                </View>
+                <Pressable
+                  onPress={() => {
+                    setShowNewContactInput(false);
+                    // Restore original contact if exists
+                    if (transaction?.contactId) {
+                      setContactId(transaction.contactId);
+                      setContactName(transaction.contactName || "");
+                    }
+                  }}
+                  className="mt-2"
+                >
+                  <Text className="text-xs text-gray-500 text-center">Cancel</Text>
+                </Pressable>
+              </View>
+            ) : filteredContacts.length === 0 ? (
+              <Pressable
+                onPress={() => setShowNewContactInput(true)}
+                className="bg-gray-100 rounded-xl px-4 py-3.5 flex-row items-center"
+              >
+                <Lucide name="user-plus" size={18} color={COLORS.gray400} />
+                <Text className="ml-3 text-base text-gray-400">Add new contact</Text>
+              </Pressable>
+            ) : (
+              <View className="flex-row flex-wrap gap-2">
+                {filteredContacts.map((contact) => (
+                  <Pressable
+                    key={contact.id}
+                    onPress={() => {
+                      setContactId(contact.id);
+                      setContactName(contact.name);
+                    }}
+                    style={[
+                      styles.categoryChip,
+                      contactId === contact.id && styles.categoryChipSelected,
+                    ]}
+                    className="flex-row items-center px-3 py-2 rounded-lg"
+                  >
+                    <Lucide
+                      name={type === "expense" ? "store" : "user"}
+                      size={14}
+                      color={contactId === contact.id ? COLORS.primary : COLORS.gray500}
+                    />
+                    <Text
+                      className={`text-sm ml-2 ${
+                        contactId === contact.id ? "text-primary font-medium" : "text-gray-600"
+                      }`}
+                    >
+                      {contact.name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
           </View>
 
           {/* Category */}
