@@ -314,8 +314,9 @@ async function callAnthropicWithMedia(systemPrompt, textMessage, mediaFiles = []
 
   // Use Sonnet for PDFs (Haiku doesn't support PDF input), Haiku for images only
   const model = hasPdf ? "claude-sonnet-4-20250514" : "claude-3-haiku-20240307";
-  // PDFs can have many transactions, so use much higher max_tokens (16K for buffer)
-  const maxTokens = hasPdf ? 16384 : 4096;
+  // PDFs can have many transactions (potentially 500-1000), so use very high max_tokens
+  // Claude Sonnet 4 supports up to 64K output tokens
+  const maxTokens = hasPdf ? 65536 : 4096;
 
   let response;
   try {
