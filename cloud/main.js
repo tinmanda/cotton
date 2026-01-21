@@ -316,7 +316,8 @@ async function callAnthropicWithMedia(systemPrompt, textMessage, mediaFiles = []
   const model = hasPdf ? "claude-sonnet-4-20250514" : "claude-3-haiku-20240307";
   // PDFs can have many transactions (potentially 500-1000), so use very high max_tokens
   // Claude Sonnet 4 max is 64000 output tokens
-  const maxTokens = hasPdf ? 64000 : 4096;
+  // For images, use 25K to handle multiple images with many transactions
+  const maxTokens = hasPdf ? 64000 : 25000;
 
   let response;
   try {
