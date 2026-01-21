@@ -219,9 +219,29 @@ export default function AddTransactionScreen() {
       const newFiles: SelectedFile[] = [];
       for (const asset of result.assets.slice(0, 5 - selectedFiles.length)) {
         try {
+          // First check if file is accessible
+          const fileInfo = await FileSystem.getInfoAsync(asset.uri);
+          if (!fileInfo.exists) {
+            console.error("PDF file not accessible at URI:", asset.uri);
+            showError("Could not access PDF file");
+            continue;
+          }
+
+          // Check file size (warn if over 10MB as base64 will be ~33% larger)
+          if (fileInfo.size && fileInfo.size > 10 * 1024 * 1024) {
+            showError("PDF file is too large (max 10MB)");
+            continue;
+          }
+
           const base64 = await FileSystem.readAsStringAsync(asset.uri, {
             encoding: FileSystem.EncodingType.Base64,
           });
+
+          if (!base64 || base64.length === 0) {
+            showError("PDF file appears to be empty");
+            continue;
+          }
+
           newFiles.push({
             uri: asset.uri,
             base64,
@@ -230,13 +250,19 @@ export default function AddTransactionScreen() {
             isPdf: true,
           });
         } catch (e) {
-          console.error("Failed to read PDF:", e);
+          const errorMessage = e instanceof Error ? e.message : "Unknown error";
+          console.error("Failed to read PDF:", errorMessage, e);
+          showError(`Failed to read PDF: ${errorMessage}`);
         }
       }
 
-      setSelectedFiles((prev) => [...prev, ...newFiles].slice(0, 5));
+      if (newFiles.length > 0) {
+        setSelectedFiles((prev) => [...prev, ...newFiles].slice(0, 5));
+      }
     } catch (error) {
-      showError("Failed to pick PDF");
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error("Failed to pick PDF:", errorMessage, error);
+      showError(`Failed to pick PDF: ${errorMessage}`);
     }
   };
 

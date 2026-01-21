@@ -268,24 +268,38 @@ async function callAnthropicWithImage(systemPrompt, textMessage, imageBase64, me
 }
 
 /**
- * Call Anthropic API with optional text and multiple images
+ * Call Anthropic API with optional text and multiple media files (images and PDFs)
  * @param {string} systemPrompt - System prompt
  * @param {string|null} textMessage - Optional text message
- * @param {Array<{base64: string, mediaType: string}>} images - Array of images
+ * @param {Array<{base64: string, mediaType: string}>} mediaFiles - Array of images or PDFs
  */
-async function callAnthropicWithMedia(systemPrompt, textMessage, images = []) {
+async function callAnthropicWithMedia(systemPrompt, textMessage, mediaFiles = []) {
   const content = [];
 
-  // Add images first
-  for (const image of images) {
-    content.push({
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: image.mediaType || "image/jpeg",
-        data: image.base64,
-      },
-    });
+  // Add media files first (images and documents)
+  for (const file of mediaFiles) {
+    const isPdf = file.mediaType === "application/pdf";
+    if (isPdf) {
+      // Use document type for PDFs (per Anthropic API spec)
+      content.push({
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: file.base64,
+        },
+      });
+    } else {
+      // Use image type for images
+      content.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: file.mediaType || "image/jpeg",
+          data: file.base64,
+        },
+      });
+    }
   }
 
   // Add text message
