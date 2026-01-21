@@ -275,11 +275,13 @@ async function callAnthropicWithImage(systemPrompt, textMessage, imageBase64, me
  */
 async function callAnthropicWithMedia(systemPrompt, textMessage, mediaFiles = []) {
   const content = [];
+  let hasPdf = false;
 
   // Add media files first (images and documents)
   for (const file of mediaFiles) {
     const isPdf = file.mediaType === "application/pdf";
     if (isPdf) {
+      hasPdf = true;
       // Use document type for PDFs (per Anthropic API spec)
       content.push({
         type: "document",
@@ -310,6 +312,9 @@ async function callAnthropicWithMedia(systemPrompt, textMessage, mediaFiles = []
     });
   }
 
+  // Use Sonnet for PDFs (Haiku doesn't support PDF input), Haiku for images only
+  const model = hasPdf ? "claude-sonnet-4-20250514" : "claude-3-haiku-20240307";
+
   let response;
   try {
     response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -320,7 +325,7 @@ async function callAnthropicWithMedia(systemPrompt, textMessage, mediaFiles = []
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
+        model,
         max_tokens: 4096,
         system: systemPrompt,
         messages: [{ role: "user", content }],
