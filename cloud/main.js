@@ -186,6 +186,7 @@ async function findPotentialDuplicates(user, amount, contactName, date, excludeI
  * Call Anthropic API (text only)
  */
 async function callAnthropic(systemPrompt, userMessage) {
+  // Use Sonnet with high token limit for bulk text parsing (e.g., 54+ salary transactions)
   let response;
   try {
     response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -196,8 +197,8 @@ async function callAnthropic(systemPrompt, userMessage) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
-        max_tokens: 4096,
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 32000,
         system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],
       }),

@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS, ROUTES } from "@/constants";
 import { FinanceService } from "@/services";
 import {
@@ -122,15 +123,17 @@ export default function AddTransactionScreen() {
           setSelectedProjectId(tx.suggestedProjectId || undefined);
         } else {
           // Multiple transactions - go to bulk screen
-          router.push({
-            pathname: ROUTES.BULK_TRANSACTIONS,
-            params: {
-              data: JSON.stringify(result.data),
+          // Store data in AsyncStorage to avoid URL param size limits
+          await AsyncStorage.setItem(
+            "bulk_transaction_data",
+            JSON.stringify({
+              data: result.data,
               rawInputId: result.data.rawInputId,
               summary: result.data.summary,
-              confidence: result.data.confidence.toString(),
-            },
-          } as any);
+              confidence: result.data.confidence,
+            })
+          );
+          router.push(ROUTES.BULK_TRANSACTIONS);
           handleReset();
         }
       } else if (!result.success) {

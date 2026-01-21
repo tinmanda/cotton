@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS, ROUTES } from "@/constants";
 import { FinanceService } from "@/services";
 import { ParsedBulkTransaction, Currency, TransactionType, ContactType } from "@/types";
@@ -50,23 +51,18 @@ function inferContactType(transactionType: TransactionType): ContactType {
 
 export default function BulkTransactionsScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
   const { showSuccess, showError } = useToast();
 
-  // Parse the data passed from the Add screen
-  const initialData = params.data ? JSON.parse(params.data as string) : null;
-  const rawInputId = params.rawInputId as string | undefined;
-  const summary = params.summary as string | undefined;
-  const confidence = params.confidence ? parseFloat(params.confidence as string) : 0;
+  // State for data loaded from AsyncStorage
+  const [isLoading, setIsLoading] = useState(true);
+  const [bulkData, setBulkData] = useState<{
+    data: any;
+    rawInputId: string;
+    summary: string;
+    confidence: number;
+  } | null>(null);
 
-  const [transactions, setTransactions] = useState<BulkTransactionItem[]>(() =>
-    (initialData?.transactions || []).map((t: ParsedBulkTransaction) => ({
-      ...t,
-      selected: true,
-      categoryId: t.suggestedCategoryId || undefined,
-      projectId: t.suggestedProjectId || undefined,
-    }))
-  );
+  const [transactions, setTransactions] = useState<BulkTransactionItem[]>([]);
   const [isCreating, setIsCreating] = useState(false);
 
   // Track contact type overrides for new contacts
@@ -75,8 +71,40 @@ export default function BulkTransactionsScreen() {
   // Bulk project selector
   const [bulkProjectId, setBulkProjectId] = useState<string | undefined>();
 
-  const categories = initialData?.categories || [];
-  const projects: Array<{ id: string; name: string; color?: string }> = initialData?.projects || [];
+  // Load data from AsyncStorage on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const storedData = await AsyncStorage.getItem("bulk_transaction_data");
+        if (storedData) {
+          const parsed = JSON.parse(storedData);
+          setBulkData(parsed);
+          setTransactions(
+            (parsed.data?.transactions || []).map((t: ParsedBulkTransaction) => ({
+              ...t,
+              selected: true,
+              categoryId: t.suggestedCategoryId || undefined,
+              projectId: t.suggestedProjectId || undefined,
+            }))
+          );
+          // Clear the stored data after loading
+          await AsyncStorage.removeItem("bulk_transaction_data");
+        }
+      } catch (error) {
+        console.error("Failed to load bulk transaction data:", error);
+        showError("Failed to load transaction data");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, [showError]);
+
+  const rawInputId = bulkData?.rawInputId;
+  const summary = bulkData?.summary;
+  const confidence = bulkData?.confidence || 0;
+  const categories = bulkData?.data?.categories || [];
+  const projects: Array<{ id: string; name: string; color?: string }> = bulkData?.data?.projects || [];
 
   // Apply bulk project to all transactions
   const applyBulkProject = (projectId: string) => {
@@ -194,7 +222,18 @@ export default function BulkTransactionsScreen() {
     }
   };
 
-  if (!initialData || transactions.length === 0) {
+  if (isLoading) {
+    return (
+      <SafeAreaView className="flex-1 bg-white">
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text className="text-gray-500 mt-4">Loading transactions...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!bulkData || transactions.length === 0) {
     return (
       <SafeAreaView className="flex-1 bg-white">
         <View className="flex-1 items-center justify-center px-6">
