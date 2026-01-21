@@ -136,7 +136,7 @@ async function convertToINR(amount, currency, date = new Date()) {
 
 /**
  * Find potential duplicate transactions
- * Matches: same amount, similar contact name, date within ±3 days
+ * Matches: similar amount (±5%), similar contact name, date within ±3 days
  * @param {Parse.User} user - The user
  * @param {number} amount - Transaction amount
  * @param {string} contactName - Contact name to match
@@ -149,10 +149,15 @@ async function findPotentialDuplicates(user, amount, contactName, date, excludeI
   const startDate = new Date(date.getTime() - threeDaysMs);
   const endDate = new Date(date.getTime() + threeDaysMs);
 
-  // Query for transactions with same amount within date range
+  // Query for transactions with similar amount (±5%) within date range
+  const amountTolerance = amount * 0.05;
+  const minAmount = amount - amountTolerance;
+  const maxAmount = amount + amountTolerance;
+
   const query = new Parse.Query("Transaction");
   query.equalTo("user", user);
-  query.equalTo("amount", amount);
+  query.greaterThanOrEqualTo("amount", minAmount);
+  query.lessThanOrEqualTo("amount", maxAmount);
   query.greaterThanOrEqualTo("date", startDate);
   query.lessThanOrEqualTo("date", endDate);
   if (excludeId) {
