@@ -12,5 +12,17 @@ export const toastAtom = atom<ToastState>({
   visible: false,
 });
 
+/**
+ * Bulk transaction data atom (temporary, for navigation between screens)
+ */
+export interface BulkTransactionData {
+  data: any;
+  rawInputId: string;
+  summary: string;
+  confidence: number;
+}
+
+export const bulkTransactionDataAtom = atom<BulkTransactionData | null>(null);
+
 // Re-export ToastType for convenience
 export type { ToastType };

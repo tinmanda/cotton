@@ -10,8 +10,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
 import { useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAtom } from "jotai";
 import { COLORS, ROUTES } from "@/constants";
+import { bulkTransactionDataAtom } from "@/store/ui/atoms";
 import { FinanceService } from "@/services";
 import { ParsedBulkTransaction, Currency, TransactionType, ContactType } from "@/types";
 import { useToast } from "@/hooks/useToast";
@@ -53,14 +54,8 @@ export default function BulkTransactionsScreen() {
   const router = useRouter();
   const { showSuccess, showError } = useToast();
 
-  // State for data loaded from AsyncStorage
-  const [isLoading, setIsLoading] = useState(true);
-  const [bulkData, setBulkData] = useState<{
-    data: any;
-    rawInputId: string;
-    summary: string;
-    confidence: number;
-  } | null>(null);
+  // Get data from Jotai atom
+  const [bulkData, setBulkData] = useAtom(bulkTransactionDataAtom);
 
   const [transactions, setTransactions] = useState<BulkTransactionItem[]>([]);
   const [isCreating, setIsCreating] = useState(false);
@@ -71,34 +66,26 @@ export default function BulkTransactionsScreen() {
   // Bulk project selector
   const [bulkProjectId, setBulkProjectId] = useState<string | undefined>();
 
-  // Load data from AsyncStorage on mount
+  // Initialize transactions from atom data
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const storedData = await AsyncStorage.getItem("bulk_transaction_data");
-        if (storedData) {
-          const parsed = JSON.parse(storedData);
-          setBulkData(parsed);
-          setTransactions(
-            (parsed.data?.transactions || []).map((t: ParsedBulkTransaction) => ({
-              ...t,
-              selected: true,
-              categoryId: t.suggestedCategoryId || undefined,
-              projectId: t.suggestedProjectId || undefined,
-            }))
-          );
-          // Clear the stored data after loading
-          await AsyncStorage.removeItem("bulk_transaction_data");
-        }
-      } catch (error) {
-        console.error("Failed to load bulk transaction data:", error);
-        showError("Failed to load transaction data");
-      } finally {
-        setIsLoading(false);
-      }
+    if (bulkData?.data?.transactions) {
+      setTransactions(
+        bulkData.data.transactions.map((t: ParsedBulkTransaction) => ({
+          ...t,
+          selected: true,
+          categoryId: t.suggestedCategoryId || undefined,
+          projectId: t.suggestedProjectId || undefined,
+        }))
+      );
+    }
+  }, [bulkData]);
+
+  // Clear atom data when leaving the screen
+  useEffect(() => {
+    return () => {
+      setBulkData(null);
     };
-    loadData();
-  }, [showError]);
+  }, [setBulkData]);
 
   const rawInputId = bulkData?.rawInputId;
   const summary = bulkData?.summary;
@@ -221,17 +208,6 @@ export default function BulkTransactionsScreen() {
       setIsCreating(false);
     }
   };
-
-  if (isLoading) {
-    return (
-      <SafeAreaView className="flex-1 bg-white">
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text className="text-gray-500 mt-4">Loading transactions...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   if (!bulkData || transactions.length === 0) {
     return (

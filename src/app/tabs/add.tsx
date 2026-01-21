@@ -16,8 +16,9 @@ import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useSetAtom } from "jotai";
 import { COLORS, ROUTES } from "@/constants";
+import { bulkTransactionDataAtom } from "@/store/ui/atoms";
 import { FinanceService } from "@/services";
 import {
   ParseTransactionResponse,
@@ -46,6 +47,7 @@ function formatAmount(amount: number, currency: Currency): string {
 export default function AddTransactionScreen() {
   const router = useRouter();
   const { showSuccess, showError } = useToast();
+  const setBulkTransactionData = useSetAtom(bulkTransactionDataAtom);
   const [text, setText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
   const [isParsing, setIsParsing] = useState(false);
@@ -123,16 +125,13 @@ export default function AddTransactionScreen() {
           setSelectedProjectId(tx.suggestedProjectId || undefined);
         } else {
           // Multiple transactions - go to bulk screen
-          // Store data in AsyncStorage to avoid URL param size limits
-          await AsyncStorage.setItem(
-            "bulk_transaction_data",
-            JSON.stringify({
-              data: result.data,
-              rawInputId: result.data.rawInputId,
-              summary: result.data.summary,
-              confidence: result.data.confidence,
-            })
-          );
+          // Store data in Jotai atom to avoid URL param size limits
+          setBulkTransactionData({
+            data: result.data,
+            rawInputId: result.data.rawInputId,
+            summary: result.data.summary,
+            confidence: result.data.confidence,
+          });
           router.push(ROUTES.BULK_TRANSACTIONS);
           handleReset();
         }
