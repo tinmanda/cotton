@@ -312,8 +312,8 @@ async function callAnthropicWithMedia(systemPrompt, textMessage, mediaFiles = []
     });
   }
 
-  // Use Sonnet for PDFs (Haiku doesn't support PDF input), Haiku for images only
-  const model = hasPdf ? "claude-sonnet-4-20250514" : "claude-3-haiku-20240307";
+  // Use Sonnet for everything (Haiku only supports 4K tokens, not enough for bulk transactions)
+  const model = "claude-sonnet-4-20250514";
   // PDFs can have many transactions (potentially 500-1000), so use very high max_tokens
   // Claude Sonnet 4 max is 64000 output tokens
   // For images, use 25K to handle multiple images with many transactions
