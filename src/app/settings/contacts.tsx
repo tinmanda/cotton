@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
 import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { COLORS } from "@/constants";
+import { COLORS, buildRoute } from "@/constants";
 import { FinanceService } from "@/services";
 import { IContact, ContactType } from "@/types";
 import { useToast } from "@/hooks/useToast";
@@ -147,7 +147,13 @@ export default function ContactsScreen() {
         <FlatList
           data={filteredContacts}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <ContactRow contact={item} contactType={contactType} />}
+          renderItem={({ item }) => (
+            <ContactRow
+              contact={item}
+              contactType={contactType}
+              onPress={() => router.push(buildRoute.contactDetail(item.id))}
+            />
+          )}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -163,13 +169,25 @@ export default function ContactsScreen() {
   );
 }
 
-function ContactRow({ contact, contactType }: { contact: IContact; contactType: "customer" | "supplier" }) {
+function ContactRow({
+  contact,
+  contactType,
+  onPress,
+}: {
+  contact: IContact;
+  contactType: "customer" | "supplier";
+  onPress: () => void;
+}) {
   const isSupplier = contactType === "supplier";
   const iconName = isSupplier ? "store" : "user";
   const amount = isSupplier ? contact.totalSpent : contact.totalReceived;
 
   return (
-    <View style={styles.contactCard} className="mx-4 mb-3 bg-white rounded-xl p-4">
+    <Pressable
+      onPress={onPress}
+      style={styles.contactCard}
+      className="mx-4 mb-3 bg-white rounded-xl p-4 active:bg-gray-50"
+    >
       <View className="flex-row items-center">
         <View style={styles.contactIcon}>
           <Lucide name={iconName} size={18} color={COLORS.primary} />
@@ -188,8 +206,9 @@ function ContactRow({ contact, contactType }: { contact: IContact; contactType: 
             {formatAmount(amount)}
           </Text>
         )}
+        <Lucide name="chevron-right" size={16} color={COLORS.gray400} className="ml-2" />
       </View>
-    </View>
+    </Pressable>
   );
 }
 

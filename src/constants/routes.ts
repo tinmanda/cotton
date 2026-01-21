@@ -32,6 +32,9 @@ export const ROUTES = {
   EMPLOYEES: "/settings/employees",
   CATEGORIES: "/settings/categories",
 
+  // Contact screens
+  CONTACT_DETAIL: "/contacts/[id]",
+
   // Profile screens
   EDIT_PROFILE: "/profile/edit",
 } as const;
@@ -45,4 +48,5 @@ export type RoutePath = (typeof ROUTES)[RouteKey];
 export const buildRoute = {
   projectDetail: (id: string) => `/projects/${id}` as const,
   transactionEdit: (id: string) => `/transactions/${id}/edit` as const,
+  contactDetail: (id: string) => `/contacts/${id}` as const,
 };

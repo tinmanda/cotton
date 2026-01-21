@@ -52,6 +52,7 @@ function RootLayoutInner() {
         <Stack.Screen name="settings/employees" />
         <Stack.Screen name="settings/contacts" />
         <Stack.Screen name="settings/categories" />
+        <Stack.Screen name="contacts/[id]" />
       </Stack>
       <ToastContainer />
     </>

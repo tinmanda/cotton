@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
 import { useRouter, useFocusEffect } from "expo-router";
-import { COLORS } from "@/constants";
+import { COLORS, buildRoute } from "@/constants";
 import { FinanceService } from "@/services";
 import { IContact, IProject, EmployeeStatus, Currency } from "@/types";
 import { useToast } from "@/hooks/useToast";
@@ -174,7 +174,7 @@ export default function EmployeesScreen() {
                     key={employee.id}
                     employee={employee}
                     isLast={index === emps.length - 1}
-                    onPress={() => openEditModal(employee)}
+                    onPress={() => router.push(buildRoute.contactDetail(employee.id))}
                   />
                 ))}
               </View>

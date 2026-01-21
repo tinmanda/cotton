@@ -249,143 +249,144 @@ export default function BulkTransactionsScreen() {
         </Pressable>
       </View>
 
-      {/* Summary */}
-      {summary && (
-        <View className="bg-white px-4 py-3 border-b border-gray-100">
-          <View className="flex-row items-center">
-            <Lucide name="sparkles" size={16} color={COLORS.primary} />
-            <Text className="text-sm text-gray-600 ml-2 flex-1">{summary}</Text>
-          </View>
-          <View className="flex-row items-center mt-2">
-            <Text className="text-xs text-gray-400">
-              AI Confidence: {Math.round(confidence * 100)}%
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* New Contacts Section */}
-      {newContacts.length > 0 && (
-        <View className="bg-white mx-4 mt-4 p-4 rounded-2xl" style={styles.card}>
-          <View className="flex-row items-center mb-3">
-            <Lucide name="user-plus" size={16} color={COLORS.primary} />
-            <Text className="text-sm font-semibold text-gray-900 ml-2">
-              New Contacts Detected
-            </Text>
-            <View style={styles.badge} className="ml-2 px-2 py-0.5 rounded-full">
-              <Text className="text-xs text-primary font-medium">{newContacts.length}</Text>
+      {/* Scrollable Content */}
+      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+        {/* Summary */}
+        {summary && (
+          <View className="bg-white px-4 py-3 border-b border-gray-100">
+            <View className="flex-row items-center">
+              <Lucide name="sparkles" size={16} color={COLORS.primary} />
+              <Text className="text-sm text-gray-600 ml-2 flex-1">{summary}</Text>
             </View>
-          </View>
-          <Text className="text-xs text-gray-500 mb-3">
-            These contacts will be created. Tap to change their type.
-          </Text>
-          {newContacts.map((contact) => {
-            const currentType = getContactType(contact.name);
-            return (
-              <View
-                key={contact.name}
-                className="flex-row items-center justify-between py-2 border-t border-gray-100"
-              >
-                <View className="flex-1 mr-3">
-                  <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
-                    {contact.name}
-                  </Text>
-                  <Text className="text-xs text-gray-500">
-                    {contact.transactionCount} transaction{contact.transactionCount !== 1 ? "s" : ""}
-                  </Text>
-                </View>
-                <View className="flex-row gap-1">
-                  {(["customer", "supplier", "employee"] as ContactType[]).map((type) => (
-                    <Pressable
-                      key={type}
-                      onPress={() => setContactType(contact.name, type)}
-                      style={[
-                        styles.typeChip,
-                        currentType === type && styles.typeChipActive,
-                      ]}
-                      className="px-2.5 py-1.5 rounded-lg"
-                    >
-                      <Text
-                        className={`text-xs font-medium capitalize ${
-                          currentType === type ? "text-white" : "text-gray-600"
-                        }`}
-                      >
-                        {type}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      )}
-
-      {/* Bulk Project Selector */}
-      {projects.length > 0 && (
-        <View className="bg-white mx-4 mt-4 p-4 rounded-2xl" style={styles.card}>
-          <View className="flex-row items-center mb-3">
-            <Lucide name="folder" size={16} color={COLORS.primary} />
-            <Text className="text-sm font-semibold text-gray-900 ml-2">
-              Assign Project
-            </Text>
-            <Text className="text-xs text-error ml-1">*</Text>
-          </View>
-          <Text className="text-xs text-gray-500 mb-3">
-            Select a project for all transactions, or set individually below.
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
-            <View className="flex-row px-1 gap-2">
-              {projects.map((project) => (
-                <Pressable
-                  key={project.id}
-                  onPress={() => applyBulkProject(project.id)}
-                  style={[
-                    styles.projectChip,
-                    bulkProjectId === project.id && styles.projectChipActive,
-                  ]}
-                  className="px-3 py-2 rounded-lg flex-row items-center"
-                >
-                  <View
-                    style={[styles.projectDot, { backgroundColor: project.color || COLORS.primary }]}
-                  />
-                  <Text
-                    className={`text-sm font-medium ml-2 ${
-                      bulkProjectId === project.id ? "text-white" : "text-gray-700"
-                    }`}
-                  >
-                    {project.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </ScrollView>
-          {!allHaveProject && (
-            <View className="flex-row items-center mt-3 pt-3 border-t border-gray-100">
-              <Lucide name="alert-circle" size={14} color={COLORS.error} />
-              <Text className="text-xs text-error ml-1.5">
-                Some transactions don't have a project assigned
+            <View className="flex-row items-center mt-2">
+              <Text className="text-xs text-gray-400">
+                AI Confidence: {Math.round(confidence * 100)}%
               </Text>
             </View>
-          )}
+          </View>
+        )}
+
+        {/* New Contacts Section */}
+        {newContacts.length > 0 && (
+          <View className="bg-white mx-4 mt-4 p-4 rounded-2xl" style={styles.card}>
+            <View className="flex-row items-center mb-3">
+              <Lucide name="user-plus" size={16} color={COLORS.primary} />
+              <Text className="text-sm font-semibold text-gray-900 ml-2">
+                New Contacts Detected
+              </Text>
+              <View style={styles.badge} className="ml-2 px-2 py-0.5 rounded-full">
+                <Text className="text-xs text-primary font-medium">{newContacts.length}</Text>
+              </View>
+            </View>
+            <Text className="text-xs text-gray-500 mb-3">
+              These contacts will be created. Tap to change their type.
+            </Text>
+            {newContacts.map((contact) => {
+              const currentType = getContactType(contact.name);
+              return (
+                <View
+                  key={contact.name}
+                  className="flex-row items-center justify-between py-2 border-t border-gray-100"
+                >
+                  <View className="flex-1 mr-3">
+                    <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
+                      {contact.name}
+                    </Text>
+                    <Text className="text-xs text-gray-500">
+                      {contact.transactionCount} transaction{contact.transactionCount !== 1 ? "s" : ""}
+                    </Text>
+                  </View>
+                  <View className="flex-row gap-1">
+                    {(["customer", "supplier", "employee"] as ContactType[]).map((type) => (
+                      <Pressable
+                        key={type}
+                        onPress={() => setContactType(contact.name, type)}
+                        style={[
+                          styles.typeChip,
+                          currentType === type && styles.typeChipActive,
+                        ]}
+                        className="px-2.5 py-1.5 rounded-lg"
+                      >
+                        <Text
+                          className={`text-xs font-medium capitalize ${
+                            currentType === type ? "text-white" : "text-gray-600"
+                          }`}
+                        >
+                          {type}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Bulk Project Selector */}
+        {projects.length > 0 && (
+          <View className="bg-white mx-4 mt-4 p-4 rounded-2xl" style={styles.card}>
+            <View className="flex-row items-center mb-3">
+              <Lucide name="folder" size={16} color={COLORS.primary} />
+              <Text className="text-sm font-semibold text-gray-900 ml-2">
+                Assign Project
+              </Text>
+              <Text className="text-xs text-error ml-1">*</Text>
+            </View>
+            <Text className="text-xs text-gray-500 mb-3">
+              Select a project for all transactions, or set individually below.
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
+              <View className="flex-row px-1 gap-2">
+                {projects.map((project) => (
+                  <Pressable
+                    key={project.id}
+                    onPress={() => applyBulkProject(project.id)}
+                    style={[
+                      styles.projectChip,
+                      bulkProjectId === project.id && styles.projectChipActive,
+                    ]}
+                    className="px-3 py-2 rounded-lg flex-row items-center"
+                  >
+                    <View
+                      style={[styles.projectDot, { backgroundColor: project.color || COLORS.primary }]}
+                    />
+                    <Text
+                      className={`text-sm font-medium ml-2 ${
+                        bulkProjectId === project.id ? "text-white" : "text-gray-700"
+                      }`}
+                    >
+                      {project.name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+            {!allHaveProject && (
+              <View className="flex-row items-center mt-3 pt-3 border-t border-gray-100">
+                <Lucide name="alert-circle" size={14} color={COLORS.error} />
+                <Text className="text-xs text-error ml-1.5">
+                  Some transactions don't have a project assigned
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Total */}
+        <View className="bg-white mx-4 mt-4 p-4 rounded-2xl" style={styles.card}>
+          <Text className="text-sm text-gray-500">Net Total (selected)</Text>
+          <Text
+            className="text-2xl font-bold mt-1"
+            style={{ color: totalAmount >= 0 ? COLORS.success : COLORS.error }}
+          >
+            {totalAmount >= 0 ? "+" : ""}
+            {formatAmount(Math.abs(totalAmount), "INR")}
+          </Text>
         </View>
-      )}
 
-      {/* Total */}
-      <View className="bg-white mx-4 mt-4 p-4 rounded-2xl" style={styles.card}>
-        <Text className="text-sm text-gray-500">Net Total (selected)</Text>
-        <Text
-          className="text-2xl font-bold mt-1"
-          style={{ color: totalAmount >= 0 ? COLORS.success : COLORS.error }}
-        >
-          {totalAmount >= 0 ? "+" : ""}
-          {formatAmount(Math.abs(totalAmount), "INR")}
-        </Text>
-      </View>
-
-      {/* Transaction List */}
-      <ScrollView className="flex-1 mt-4" showsVerticalScrollIndicator={false}>
-        <View className="px-4 pb-6">
+        {/* Transaction List */}
+        <View className="px-4 mt-4 pb-6">
           {transactions.map((transaction, index) => (
             <Pressable
               key={index}
