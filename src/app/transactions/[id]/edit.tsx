@@ -3,6 +3,7 @@ import {
   View,
   Text,
   ScrollView,
+  FlatList,
   Pressable,
   TextInput,
   StyleSheet,
@@ -51,7 +52,8 @@ export default function EditTransactionScreen() {
   const [date, setDate] = useState(formatDateForInput(new Date()));
   const [contactId, setContactId] = useState<string | null>(null);
   const [contactName, setContactName] = useState("");
-  const [showNewContactInput, setShowNewContactInput] = useState(false);
+  const [showContactPicker, setShowContactPicker] = useState(false);
+  const [newContactName, setNewContactName] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [description, setDescription] = useState("");
@@ -267,7 +269,6 @@ export default function EditTransactionScreen() {
                     // Reset contact when type changes (contacts are filtered by type)
                     setContactId(null);
                     setContactName("");
-                    setShowNewContactInput(false);
                   }}
                   style={[
                     styles.typeChip,
@@ -319,88 +320,29 @@ export default function EditTransactionScreen() {
 
           {/* Contact */}
           <View style={styles.card} className="bg-white rounded-2xl p-4 mb-3">
-            <View className="flex-row items-center justify-between mb-3">
-              <Text className="text-sm font-medium text-gray-500">Contact</Text>
-              {!showNewContactInput && (
-                <Pressable
-                  onPress={() => {
-                    setShowNewContactInput(true);
-                    setContactId(null);
-                  }}
-                  className="flex-row items-center"
+            <Text className="text-sm font-medium text-gray-500 mb-2">Contact</Text>
+            <Pressable
+              onPress={() => {
+                setNewContactName("");
+                setShowContactPicker(true);
+              }}
+              className="bg-gray-100 rounded-xl px-4 py-3.5 flex-row items-center justify-between"
+            >
+              <View className="flex-row items-center flex-1">
+                <Lucide
+                  name={type === "expense" ? "store" : "user"}
+                  size={18}
+                  color={contactName ? COLORS.gray700 : COLORS.gray400}
+                />
+                <Text
+                  className={`ml-3 text-base ${contactName ? "text-gray-900" : "text-gray-400"}`}
+                  numberOfLines={1}
                 >
-                  <Lucide name="plus" size={14} color={COLORS.primary} />
-                  <Text className="text-xs text-primary ml-1">New</Text>
-                </Pressable>
-              )}
-            </View>
-
-            {showNewContactInput ? (
-              <View>
-                <View className="bg-gray-100 rounded-xl px-4 py-3.5 flex-row items-center">
-                  <Lucide name="user" size={18} color={COLORS.gray500} />
-                  <TextInput
-                    value={contactName}
-                    onChangeText={setContactName}
-                    placeholder="Enter contact name"
-                    placeholderTextColor={COLORS.gray400}
-                    autoFocus
-                    style={{ flex: 1, marginLeft: 12, fontSize: 16, color: COLORS.gray900 }}
-                  />
-                </View>
-                <Pressable
-                  onPress={() => {
-                    setShowNewContactInput(false);
-                    // Restore original contact if exists
-                    if (transaction?.contactId) {
-                      setContactId(transaction.contactId);
-                      setContactName(transaction.contactName || "");
-                    }
-                  }}
-                  className="mt-2"
-                >
-                  <Text className="text-xs text-gray-500 text-center">Cancel</Text>
-                </Pressable>
+                  {contactName || "Select contact"}
+                </Text>
               </View>
-            ) : filteredContacts.length === 0 ? (
-              <Pressable
-                onPress={() => setShowNewContactInput(true)}
-                className="bg-gray-100 rounded-xl px-4 py-3.5 flex-row items-center"
-              >
-                <Lucide name="user-plus" size={18} color={COLORS.gray400} />
-                <Text className="ml-3 text-base text-gray-400">Add new contact</Text>
-              </Pressable>
-            ) : (
-              <View className="flex-row flex-wrap gap-2">
-                {filteredContacts.map((contact) => (
-                  <Pressable
-                    key={contact.id}
-                    onPress={() => {
-                      setContactId(contact.id);
-                      setContactName(contact.name);
-                    }}
-                    style={[
-                      styles.categoryChip,
-                      contactId === contact.id && styles.categoryChipSelected,
-                    ]}
-                    className="flex-row items-center px-3 py-2 rounded-lg"
-                  >
-                    <Lucide
-                      name={type === "expense" ? "store" : "user"}
-                      size={14}
-                      color={contactId === contact.id ? COLORS.primary : COLORS.gray500}
-                    />
-                    <Text
-                      className={`text-sm ml-2 ${
-                        contactId === contact.id ? "text-primary font-medium" : "text-gray-600"
-                      }`}
-                    >
-                      {contact.name}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
+              <Lucide name="chevron-down" size={18} color={COLORS.gray400} />
+            </Pressable>
           </View>
 
           {/* Category */}
@@ -558,6 +500,93 @@ export default function EditTransactionScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Contact Picker Modal */}
+      <Modal visible={showContactPicker} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.pickerModal} className="bg-white rounded-t-3xl">
+            {/* Header */}
+            <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-100">
+              <Text className="text-lg font-semibold text-gray-900">Select Contact</Text>
+              <Pressable
+                onPress={() => setShowContactPicker(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Lucide name="x" size={24} color={COLORS.gray500} />
+              </Pressable>
+            </View>
+
+            {/* New Contact Input */}
+            <View className="px-4 py-3 border-b border-gray-100">
+              <View className="bg-gray-100 rounded-xl px-4 py-3 flex-row items-center">
+                <Lucide name="plus" size={18} color={COLORS.gray500} />
+                <TextInput
+                  value={newContactName}
+                  onChangeText={setNewContactName}
+                  placeholder="Add new contact..."
+                  placeholderTextColor={COLORS.gray400}
+                  style={{ flex: 1, marginLeft: 12, fontSize: 16, color: COLORS.gray900 }}
+                />
+                {newContactName.trim().length > 0 && (
+                  <Pressable
+                    onPress={() => {
+                      setContactId(null);
+                      setContactName(newContactName.trim());
+                      setNewContactName("");
+                      setShowContactPicker(false);
+                    }}
+                    className="bg-primary px-3 py-1.5 rounded-lg"
+                  >
+                    <Text className="text-white text-sm font-medium">Add</Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+
+            {/* Contact List */}
+            <FlatList
+              data={filteredContacts}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => {
+                    setContactId(item.id);
+                    setContactName(item.name);
+                    setShowContactPicker(false);
+                  }}
+                  className="flex-row items-center px-4 py-3.5 border-b border-gray-50 active:bg-gray-50"
+                >
+                  <View style={styles.contactIcon}>
+                    <Lucide
+                      name={type === "expense" ? "store" : "user"}
+                      size={16}
+                      color={COLORS.primary}
+                    />
+                  </View>
+                  <View className="flex-1 ml-3">
+                    <Text className="text-base text-gray-900">{item.name}</Text>
+                    <Text className="text-xs text-gray-500">
+                      {item.transactionCount} transaction{item.transactionCount !== 1 ? "s" : ""}
+                    </Text>
+                  </View>
+                  {contactId === item.id && (
+                    <Lucide name="check" size={20} color={COLORS.primary} />
+                  )}
+                </Pressable>
+              )}
+              ListEmptyComponent={
+                <View className="items-center py-8">
+                  <Lucide name="users" size={32} color={COLORS.gray300} />
+                  <Text className="text-gray-400 mt-2">No contacts yet</Text>
+                  <Text className="text-gray-400 text-sm">Add one above</Text>
+                </View>
+              }
+              style={{ maxHeight: 400 }}
+              showsVerticalScrollIndicator={false}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -621,5 +650,20 @@ const styles = StyleSheet.create({
   },
   confirmDeleteButton: {
     backgroundColor: COLORS.error,
+  },
+  pickerModal: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    maxHeight: "80%",
+  },
+  contactIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: `${COLORS.primary}15`,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
