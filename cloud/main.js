@@ -2275,11 +2275,13 @@ Parse.Cloud.define("getProjectSummary", async (request) => {
     }
 
     // Contact totals
-    const contactId = t.get("contact")?.id;
+    const contact = t.get("contact");
+    const contactId = contact?.id;
     if (contactId) {
       const contactName = t.get("contactName");
+      const contactTypes = contact?.get("types") || [];
       if (!contactTotals[contactId]) {
-        contactTotals[contactId] = { id: contactId, name: contactName, amount: 0, count: 0 };
+        contactTotals[contactId] = { id: contactId, name: contactName, types: contactTypes, amount: 0, count: 0 };
       }
       contactTotals[contactId].amount += amountINR;
       contactTotals[contactId].count += 1;

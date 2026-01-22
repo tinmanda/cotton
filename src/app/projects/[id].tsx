@@ -15,7 +15,7 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { COLORS, ROUTES } from "@/constants";
 import { FinanceService } from "@/services";
-import { IProjectSummary, ITransaction } from "@/types";
+import { IProjectSummary, ITransaction, ContactType } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
 function formatAmount(amount: number): string {
@@ -126,6 +126,79 @@ function generatePdfHtml(
     </html>
   `;
 }
+
+interface ContactListSectionProps {
+  title: string;
+  icon: string;
+  contacts: Array<{
+    id: string;
+    name: string;
+    types: ContactType[];
+    amount: number;
+    count: number;
+  }>;
+  projectId: string;
+  router: ReturnType<typeof useRouter>;
+}
+
+function ContactListSection({ title, icon, contacts, projectId, router }: ContactListSectionProps) {
+  if (contacts.length === 0) return null;
+
+  return (
+    <View className="px-4 mb-4">
+      <View className="flex-row items-center mb-3">
+        <Lucide name={icon as any} size={16} color={COLORS.gray500} />
+        <Text className="text-base font-semibold text-gray-900 ml-2">
+          {title}
+        </Text>
+        <Text className="text-sm text-gray-400 ml-2">({contacts.length})</Text>
+      </View>
+      <View style={sectionCardStyle} className="bg-white rounded-2xl overflow-hidden">
+        {contacts.map((contact, index) => (
+          <Pressable
+            key={contact.id}
+            onPress={() =>
+              router.push({
+                pathname: ROUTES.TRANSACTIONS,
+                params: {
+                  projectId,
+                  contactId: contact.id,
+                  contactName: contact.name,
+                },
+              } as any)
+            }
+            className={`flex-row items-center justify-between px-4 py-3 active:bg-gray-50 ${
+              index < contacts.length - 1 ? "border-b border-gray-100" : ""
+            }`}
+          >
+            <View className="flex-1">
+              <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>
+                {contact.name}
+              </Text>
+              <Text className="text-xs text-gray-500 mt-0.5">
+                {contact.count} transaction{contact.count !== 1 ? "s" : ""}
+              </Text>
+            </View>
+            <View className="flex-row items-center">
+              <Text className="text-sm font-semibold text-gray-900 mr-2">
+                {formatAmount(contact.amount)}
+              </Text>
+              <Lucide name="chevron-right" size={16} color={COLORS.gray400} />
+            </View>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const sectionCardStyle = {
+  shadowColor: COLORS.shadow,
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.05,
+  shadowRadius: 4,
+  elevation: 1,
+};
 
 export default function ProjectDetailScreen() {
   const router = useRouter();
@@ -365,54 +438,28 @@ export default function ProjectDetailScreen() {
           </View>
         )}
 
-        {/* Contacts */}
-        <View className="px-4 mb-6">
-          <Text className="text-base font-semibold text-gray-900 mb-3">
-            Contacts
-          </Text>
-          {summary.contacts && summary.contacts.length > 0 ? (
-            <View style={styles.sectionCard} className="bg-white rounded-2xl overflow-hidden">
-              {summary.contacts.map((contact, index) => (
-                <Pressable
-                  key={contact.id}
-                  onPress={() =>
-                    router.push({
-                      pathname: ROUTES.TRANSACTIONS,
-                      params: {
-                        projectId: id,
-                        contactId: contact.id,
-                        contactName: contact.name,
-                      },
-                    } as any)
-                  }
-                  className={`flex-row items-center justify-between px-4 py-3 active:bg-gray-50 ${
-                    index < summary.contacts.length - 1 ? "border-b border-gray-100" : ""
-                  }`}
-                >
-                  <View className="flex-1">
-                    <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>
-                      {contact.name}
-                    </Text>
-                    <Text className="text-xs text-gray-500 mt-0.5">
-                      {contact.count} transaction{contact.count !== 1 ? "s" : ""}
-                    </Text>
-                  </View>
-                  <View className="flex-row items-center">
-                    <Text className="text-sm font-semibold text-gray-900 mr-2">
-                      {formatAmount(contact.amount)}
-                    </Text>
-                    <Lucide name="chevron-right" size={16} color={COLORS.gray400} />
-                  </View>
-                </Pressable>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyState} className="bg-white rounded-2xl p-6 items-center">
-              <Lucide name="users" size={24} color={COLORS.gray400} />
-              <Text className="text-sm text-gray-500 mt-2">No contacts yet</Text>
-            </View>
-          )}
-        </View>
+        {/* Contact Lists by Type */}
+        <ContactListSection
+          title="Customers"
+          icon="user"
+          contacts={summary.contacts?.filter((c) => c.types?.includes("customer")) || []}
+          projectId={id!}
+          router={router}
+        />
+        <ContactListSection
+          title="Suppliers"
+          icon="truck"
+          contacts={summary.contacts?.filter((c) => c.types?.includes("supplier")) || []}
+          projectId={id!}
+          router={router}
+        />
+        <ContactListSection
+          title="Employees"
+          icon="briefcase"
+          contacts={summary.contacts?.filter((c) => c.types?.includes("employee")) || []}
+          projectId={id!}
+          router={router}
+        />
       </ScrollView>
     </SafeAreaView>
   );

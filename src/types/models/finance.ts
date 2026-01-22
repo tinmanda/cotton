@@ -351,6 +351,7 @@ export interface IProjectSummary {
   contacts: Array<{
     id: string;
     name: string;
+    types: ContactType[];
     amount: number;
     count: number;
   }>;
