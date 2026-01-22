@@ -2012,10 +2012,53 @@ Parse.Cloud.define("getTransactions", async (request) => {
   query.limit(limit || 50);
   query.skip(skip || 0);
 
-  const [results, total] = await Promise.all([
+  // Create separate queries for totals (without pagination)
+  const incomeQuery = new Parse.Query("Transaction");
+  incomeQuery.equalTo("user", user);
+  incomeQuery.equalTo("type", "income");
+  if (startDate) incomeQuery.greaterThanOrEqualTo("date", new Date(startDate));
+  if (endDate) incomeQuery.lessThanOrEqualTo("date", new Date(endDate));
+  if (projectId) {
+    const projPointer = Parse.Object.extend("Project").createWithoutData(projectId);
+    incomeQuery.equalTo("project", projPointer);
+  }
+  if (categoryId) {
+    const catPointer = Parse.Object.extend("Category").createWithoutData(categoryId);
+    incomeQuery.equalTo("category", catPointer);
+  }
+  if (contactId) {
+    const contactPointer = Parse.Object.extend("Contact").createWithoutData(contactId);
+    incomeQuery.equalTo("contact", contactPointer);
+  }
+
+  const expenseQuery = new Parse.Query("Transaction");
+  expenseQuery.equalTo("user", user);
+  expenseQuery.equalTo("type", "expense");
+  if (startDate) expenseQuery.greaterThanOrEqualTo("date", new Date(startDate));
+  if (endDate) expenseQuery.lessThanOrEqualTo("date", new Date(endDate));
+  if (projectId) {
+    const projPointer = Parse.Object.extend("Project").createWithoutData(projectId);
+    expenseQuery.equalTo("project", projPointer);
+  }
+  if (categoryId) {
+    const catPointer = Parse.Object.extend("Category").createWithoutData(categoryId);
+    expenseQuery.equalTo("category", catPointer);
+  }
+  if (contactId) {
+    const contactPointer = Parse.Object.extend("Contact").createWithoutData(contactId);
+    expenseQuery.equalTo("contact", contactPointer);
+  }
+
+  const [results, total, incomeResults, expenseResults] = await Promise.all([
     query.find({ useMasterKey: true }),
     query.count({ useMasterKey: true }),
+    incomeQuery.find({ useMasterKey: true }),
+    expenseQuery.find({ useMasterKey: true }),
   ]);
+
+  // Calculate total income and expenses from all matching transactions
+  const totalIncome = incomeResults.reduce((sum, t) => sum + (t.get("amountINR") || 0), 0);
+  const totalExpenses = expenseResults.reduce((sum, t) => sum + (t.get("amountINR") || 0), 0);
 
   return {
     transactions: results.map((t) => ({
@@ -2039,6 +2082,8 @@ Parse.Cloud.define("getTransactions", async (request) => {
       updatedAt: t.updatedAt,
     })),
     total,
+    totalIncome,
+    totalExpenses,
     hasMore: (skip || 0) + results.length < total,
   };
 });

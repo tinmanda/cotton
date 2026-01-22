@@ -10,10 +10,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
 import { COLORS, buildRoute } from "@/constants";
 import { FinanceService } from "@/services";
-import { ITransaction, TransactionType } from "@/types";
+import { ITransaction } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
 function formatAmount(amount: number, currency: string = "INR"): string {
@@ -71,6 +71,7 @@ type FilterType = "all" | "income" | "expense";
 
 export default function TransactionsScreen() {
   const router = useRouter();
+  const { projectId } = useLocalSearchParams<{ projectId?: string }>();
   const { showError } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -78,6 +79,8 @@ export default function TransactionsScreen() {
   const [transactions, setTransactions] = useState<ITransaction[]>([]);
   const [hasMore, setHasMore] = useState(true);
   const [filter, setFilter] = useState<FilterType>("all");
+  const [totals, setTotals] = useState({ income: 0, expenses: 0 });
+  const [projectName, setProjectName] = useState<string | null>(null);
 
   const loadTransactions = useCallback(
     async (reset = true, showLoader = true) => {
@@ -87,6 +90,7 @@ export default function TransactionsScreen() {
       try {
         const result = await FinanceService.getTransactions({
           type: filter === "all" ? undefined : filter,
+          projectId: projectId || undefined,
           limit: 30,
           skip: reset ? 0 : transactions.length,
         });
@@ -94,6 +98,15 @@ export default function TransactionsScreen() {
         if (result.success) {
           if (reset) {
             setTransactions(result.data.transactions);
+            // Use server-provided totals (from all matching transactions, not just paginated)
+            setTotals({
+              income: result.data.totalIncome,
+              expenses: result.data.totalExpenses,
+            });
+            // Get project name from first transaction if filtering by project
+            if (projectId && result.data.transactions.length > 0) {
+              setProjectName(result.data.transactions[0].projectName || null);
+            }
           } else {
             setTransactions((prev) => [...prev, ...result.data.transactions]);
           }
@@ -107,13 +120,13 @@ export default function TransactionsScreen() {
         setIsLoadingMore(false);
       }
     },
-    [filter, transactions.length, showError]
+    [filter, projectId, transactions.length, showError]
   );
 
   useFocusEffect(
     useCallback(() => {
       loadTransactions();
-    }, [filter]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [filter, projectId]) // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const onRefresh = useCallback(() => {
@@ -129,16 +142,6 @@ export default function TransactionsScreen() {
 
   const groupedTransactions = groupTransactionsByDate(transactions);
 
-  // Calculate totals for filtered transactions
-  const totals = transactions.reduce(
-    (acc, t) => {
-      if (t.type === "income") acc.income += t.amountINR;
-      else acc.expenses += t.amountINR;
-      return acc;
-    },
-    { income: 0, expenses: 0 }
-  );
-
   if (isLoading) {
     return (
       <SafeAreaView className="flex-1 bg-white" edges={["top", "left", "right"]}>
@@ -153,10 +156,21 @@ export default function TransactionsScreen() {
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top", "left", "right"]}>
       {/* Header */}
       <View className="bg-white px-6 py-4 border-b border-gray-100">
-        <Text className="text-2xl font-bold text-gray-900">Transactions</Text>
-        <Text className="text-sm text-gray-500 mt-0.5">
-          {transactions.length} transactions
-        </Text>
+        <View className="flex-row items-center">
+          {projectId && (
+            <Pressable onPress={() => router.back()} className="mr-3" hitSlop={10}>
+              <Lucide name="chevron-left" size={24} color={COLORS.gray700} />
+            </Pressable>
+          )}
+          <View>
+            <Text className="text-2xl font-bold text-gray-900">
+              {projectName ? `${projectName}` : "Transactions"}
+            </Text>
+            <Text className="text-sm text-gray-500 mt-0.5">
+              {transactions.length} transactions
+            </Text>
+          </View>
+        </View>
       </View>
 
       {/* Filter Tabs */}
@@ -180,20 +194,37 @@ export default function TransactionsScreen() {
           ))}
         </View>
 
-        {/* Summary */}
-        {filter !== "all" && (
-          <View className="flex-row justify-between mt-3 pt-3 border-t border-gray-100">
-            <Text className="text-sm text-gray-500">
-              Total {filter === "income" ? "Income" : "Expenses"}
-            </Text>
-            <Text
-              className="text-sm font-semibold"
-              style={{ color: filter === "income" ? COLORS.success : COLORS.error }}
-            >
-              {formatAmount(filter === "income" ? totals.income : totals.expenses)}
-            </Text>
-          </View>
-        )}
+        {/* Summary - show totals from server (all matching transactions, not just paginated) */}
+        <View className="flex-row justify-between mt-3 pt-3 border-t border-gray-100">
+          {filter === "all" ? (
+            <>
+              <View className="flex-row items-center">
+                <Text className="text-sm text-gray-500">Income: </Text>
+                <Text className="text-sm font-semibold" style={{ color: COLORS.success }}>
+                  {formatAmount(totals.income)}
+                </Text>
+              </View>
+              <View className="flex-row items-center">
+                <Text className="text-sm text-gray-500">Expenses: </Text>
+                <Text className="text-sm font-semibold" style={{ color: COLORS.error }}>
+                  {formatAmount(totals.expenses)}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text className="text-sm text-gray-500">
+                Total {filter === "income" ? "Income" : "Expenses"}
+              </Text>
+              <Text
+                className="text-sm font-semibold"
+                style={{ color: filter === "income" ? COLORS.success : COLORS.error }}
+              >
+                {formatAmount(filter === "income" ? totals.income : totals.expenses)}
+              </Text>
+            </>
+          )}
+        </View>
       </View>
 
       {transactions.length === 0 ? (

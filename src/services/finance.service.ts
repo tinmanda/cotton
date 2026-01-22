@@ -405,7 +405,13 @@ export class FinanceService {
   static async getTransactions(
     filters?: TransactionFilters & { limit?: number; skip?: number }
   ): Promise<
-    ApiResponse<{ transactions: ITransaction[]; total: number; hasMore: boolean }>
+    ApiResponse<{
+      transactions: ITransaction[];
+      total: number;
+      totalIncome: number;
+      totalExpenses: number;
+      hasMore: boolean;
+    }>
   > {
     try {
       const params: Record<string, unknown> = {};
@@ -432,6 +438,8 @@ export class FinanceService {
           updatedAt: new Date(t.updatedAt),
         })),
         total: result.total,
+        totalIncome: result.totalIncome || 0,
+        totalExpenses: result.totalExpenses || 0,
         hasMore: result.hasMore,
       });
     } catch (error) {
