@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Modal,
   View,
@@ -6,13 +6,14 @@ import {
   StyleSheet,
   Animated,
   Pressable,
+  ScrollView,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAtom } from "jotai";
 import { Lucide } from "@react-native-vector-icons/lucide";
 
 import { COLORS } from "@/constants";
-import { toastAtom, ToastType } from "@/store/ui/atoms";
+import { toastAtom, errorModalAtom, ToastType } from "@/store/ui/atoms";
 
 const TOAST_COLORS: Record<ToastType, { bg: string; border: string; icon: string }> = {
   success: {
@@ -51,6 +52,7 @@ const TOAST_ICONS: Record<ToastType, string> = {
 export function ToastContainer() {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useAtom(toastAtom);
+  const [errorModal, setErrorModal] = useAtom(errorModalAtom);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(-100)).current;
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -107,52 +109,117 @@ export function ToastContainer() {
     });
   };
 
-  if (!toast.visible) return null;
+  const handleToastPress = () => {
+    if (toast.details) {
+      // Show error modal with details
+      hideToast();
+      setErrorModal({
+        visible: true,
+        title: toast.type === "error" ? "Error Details" : "Details",
+        message: toast.details,
+      });
+    } else {
+      hideToast();
+    }
+  };
+
+  const hideErrorModal = () => {
+    setErrorModal((prev) => ({ ...prev, visible: false }));
+  };
+
+  if (!toast.visible && !errorModal.visible) return null;
 
   const colors = TOAST_COLORS[toast.type];
   const iconName = TOAST_ICONS[toast.type];
 
   return (
-    <Modal
-      visible={toast.visible}
-      transparent
-      animationType="none"
-      statusBarTranslucent
-      onRequestClose={hideToast}
-    >
-      <View style={styles.overlay} pointerEvents="box-none">
-        <Animated.View
-          style={[
-            styles.toastContainer,
-            {
-              top: insets.top + 10,
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
-        >
-          <Pressable onPress={hideToast} style={styles.pressable}>
-            <View
-              style={[
-                styles.toast,
-                {
-                  backgroundColor: colors.bg,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <Lucide name={iconName as any} size={20} color={colors.icon} />
-              <Text style={styles.message} numberOfLines={2}>
-                {toast.message}
-              </Text>
-              <Pressable onPress={hideToast} hitSlop={8}>
-                <Lucide name="x" size={18} color={COLORS.gray500} />
+    <>
+      {/* Toast */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={hideToast}
+      >
+        <View style={styles.overlay} pointerEvents="box-none">
+          <Animated.View
+            style={[
+              styles.toastContainer,
+              {
+                top: insets.top + 10,
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <Pressable onPress={handleToastPress} style={styles.pressable}>
+              <View
+                style={[
+                  styles.toast,
+                  {
+                    backgroundColor: colors.bg,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Lucide name={iconName as any} size={20} color={colors.icon} />
+                <View style={styles.messageContainer}>
+                  <Text style={styles.message} numberOfLines={2}>
+                    {toast.message}
+                  </Text>
+                  {toast.details && (
+                    <Text style={styles.tapForDetails}>Tap for details</Text>
+                  )}
+                </View>
+                <Pressable onPress={hideToast} hitSlop={8}>
+                  <Lucide name="x" size={18} color={COLORS.gray500} />
+                </Pressable>
+              </View>
+            </Pressable>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      {/* Error Modal */}
+      <Modal
+        visible={errorModal.visible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={hideErrorModal}
+      >
+        <View style={styles.errorModalOverlay}>
+          <View style={[styles.errorModalContent, { marginTop: insets.top + 40 }]}>
+            <View style={styles.errorModalHeader}>
+              <View style={styles.errorIconContainer}>
+                <Lucide name="alert-circle" size={24} color={COLORS.error} />
+              </View>
+              <Text style={styles.errorModalTitle}>{errorModal.title}</Text>
+              <Pressable onPress={hideErrorModal} hitSlop={12} style={styles.closeButton}>
+                <Lucide name="x" size={24} color={COLORS.gray500} />
               </Pressable>
             </View>
-          </Pressable>
-        </Animated.View>
-      </View>
-    </Modal>
+            <ScrollView style={styles.errorModalBody} showsVerticalScrollIndicator={false}>
+              <Text style={styles.errorModalMessage} selectable>
+                {errorModal.message}
+              </Text>
+              {errorModal.details && (
+                <View style={styles.errorDetails}>
+                  <Text style={styles.errorDetailsLabel}>Technical Details:</Text>
+                  <Text style={styles.errorDetailsText} selectable>
+                    {errorModal.details}
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+            <Pressable onPress={hideErrorModal} style={styles.errorModalButton}>
+              <Text style={styles.errorModalButtonText}>Dismiss</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -185,11 +252,108 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
-  message: {
+  messageContainer: {
     flex: 1,
+  },
+  message: {
     fontSize: 14,
     fontWeight: "500",
     color: COLORS.textPrimary,
     lineHeight: 20,
+  },
+  tapForDetails: {
+    fontSize: 11,
+    color: COLORS.gray500,
+    marginTop: 2,
+  },
+  // Error Modal styles
+  errorModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-start",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  errorModalContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    width: "100%",
+    maxWidth: 400,
+    maxHeight: "80%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  errorModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray100,
+  },
+  errorIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#fef2f2",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  errorModalTitle: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  errorModalBody: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    maxHeight: 300,
+  },
+  errorModalMessage: {
+    fontSize: 15,
+    color: COLORS.textPrimary,
+    lineHeight: 22,
+  },
+  errorDetails: {
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray100,
+  },
+  errorDetailsLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.gray500,
+    marginBottom: 6,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  errorDetailsText: {
+    fontSize: 13,
+    color: COLORS.gray600,
+    lineHeight: 18,
+    fontFamily: "monospace",
+  },
+  errorModalButton: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    marginTop: 8,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  errorModalButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.white,
   },
 });

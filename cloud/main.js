@@ -1369,7 +1369,8 @@ Parse.Cloud.define("parseTransactionInput", async (request) => {
     new Parse.Query("Project").equalTo("user", user).find({ useMasterKey: true }),
   ]);
 
-  const contactList = contacts.map((c) => ({
+  // Full contact list for AI context (includes aliases for matching)
+  const contactListForAI = contacts.map((c) => ({
     id: c.id,
     name: c.get("name"),
     types: c.get("types") || [],
@@ -1379,7 +1380,10 @@ Parse.Cloud.define("parseTransactionInput", async (request) => {
     projectId: c.get("project")?.id,
   }));
   const categoryList = categories.map((c) => ({ id: c.id, name: c.get("name"), type: c.get("type") }));
-  const projectList = projects.map((p) => ({ id: p.id, name: p.get("name") }));
+  // Project list for AI context (names for matching)
+  const projectListForAI = projects.map((p) => ({ id: p.id, name: p.get("name") }));
+  // Minimal project list for client response (with color for display, no redundant data)
+  const projectListForClient = projects.map((p) => ({ id: p.id, name: p.get("name"), color: p.get("color") }));
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -1388,9 +1392,9 @@ Parse.Cloud.define("parseTransactionInput", async (request) => {
 Your job is to extract MULTIPLE transactions from the provided input (text, images, or both).
 
 CONTEXT:
-- User's existing contacts (customers, suppliers, employees): ${JSON.stringify(contactList)}
+- User's existing contacts (customers, suppliers, employees): ${JSON.stringify(contactListForAI)}
 - User's categories: ${JSON.stringify(categoryList)}
-- User's projects: ${JSON.stringify(projectList)}
+- User's projects: ${JSON.stringify(projectListForAI)}
 - Today's date: ${today}
 
 INPUT TYPES YOU MAY RECEIVE:
@@ -1534,16 +1538,15 @@ RESPOND WITH ONLY VALID JSON (no markdown, no explanation):
 
   console.log(`[parseTransactionInput] Parsed ${parsedData.transactions?.length || 0} transactions (text: ${hasText}, images: ${hasImages ? images.length : 0}) for user ${user.id}`);
 
+  // Return minimal data to avoid timeout with large payloads
+  // Contacts are not returned - only needed for AI context, not client display
   return {
     transactions: parsedData.transactions || [],
-    inputType: parsedData.inputType,
-    documentTypes: parsedData.documentTypes,
     summary: parsedData.summary,
     confidence: parsedData.confidence,
     rawInputId: rawInput.id,
     categories: categoryList,
-    projects: projectList,
-    contacts: contactList,
+    projects: projectListForClient,
   };
 });
 

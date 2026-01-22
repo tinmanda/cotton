@@ -1,6 +1,6 @@
 import { atom } from "jotai";
 import { TOAST } from "@/constants";
-import { ToastType, ToastState } from "@/types";
+import { ToastType, ToastState, ErrorModalState } from "@/types";
 
 /**
  * Toast state atom
@@ -10,6 +10,15 @@ export const toastAtom = atom<ToastState>({
   message: "",
   duration: TOAST.DURATION_DEFAULT,
   visible: false,
+});
+
+/**
+ * Error modal state atom (for showing detailed error information)
+ */
+export const errorModalAtom = atom<ErrorModalState>({
+  visible: false,
+  title: "",
+  message: "",
 });
 
 /**

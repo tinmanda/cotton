@@ -259,17 +259,15 @@ export interface ImageInput {
 
 /**
  * Response from parseTransactionInput cloud function (unified input)
+ * Optimized to reduce payload size - contacts not included (only needed for AI context)
  */
 export interface ParseTransactionInputResponse {
   transactions: ParsedBulkTransaction[];
-  inputType: "text_only" | "image_only" | "text_and_image";
-  documentTypes: Array<"receipt" | "invoice" | "bank_statement" | "text_note" | "other">;
   summary: string;
   confidence: number;
   rawInputId: string;
   categories: Array<{ id: string; name: string; type: TransactionType }>;
-  projects: Array<{ id: string; name: string }>;
-  contacts: ParsedContactInfo[];
+  projects: Array<{ id: string; name: string; color?: string }>;
 }
 
 /**
