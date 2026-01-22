@@ -11,9 +11,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
-import { COLORS, ROUTES } from "@/constants";
+import { COLORS } from "@/constants";
 import { FinanceService } from "@/services";
-import { IProjectSummary, ITransaction } from "@/types";
+import { IProjectSummary } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
 function formatAmount(amount: number): string {
@@ -27,7 +27,6 @@ export default function ProjectDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [summary, setSummary] = useState<IProjectSummary | null>(null);
-  const [transactions, setTransactions] = useState<ITransaction[]>([]);
 
   const loadData = useCallback(
     async (showLoader = true) => {
@@ -35,19 +34,12 @@ export default function ProjectDetailScreen() {
       if (showLoader) setIsLoading(true);
 
       try {
-        const [summaryRes, transactionsRes] = await Promise.all([
-          FinanceService.getProjectSummary(id),
-          FinanceService.getTransactions({ projectId: id, limit: 20 }),
-        ]);
+        const summaryRes = await FinanceService.getProjectSummary(id);
 
         if (summaryRes.success) {
           setSummary(summaryRes.data);
         } else {
           showError(summaryRes.error.message);
-        }
-
-        if (transactionsRes.success) {
-          setTransactions(transactionsRes.data.transactions);
         }
       } finally {
         setIsLoading(false);
@@ -202,18 +194,18 @@ export default function ProjectDetailScreen() {
           </View>
         )}
 
-        {/* Top Contacts */}
-        {summary.topContacts && summary.topContacts.length > 0 && (
-          <View className="px-4 mb-4">
-            <Text className="text-base font-semibold text-gray-900 mb-3">
-              Top Contacts
-            </Text>
+        {/* Contacts */}
+        <View className="px-4 mb-6">
+          <Text className="text-base font-semibold text-gray-900 mb-3">
+            Contacts
+          </Text>
+          {summary.contacts && summary.contacts.length > 0 ? (
             <View style={styles.sectionCard} className="bg-white rounded-2xl overflow-hidden">
-              {summary.topContacts.map((contact, index) => (
+              {summary.contacts.map((contact, index) => (
                 <View
                   key={contact.id}
                   className={`flex-row items-center justify-between px-4 py-3 ${
-                    index < summary.topContacts.length - 1 ? "border-b border-gray-100" : ""
+                    index < summary.contacts.length - 1 ? "border-b border-gray-100" : ""
                   }`}
                 >
                   <View className="flex-1">
@@ -221,7 +213,7 @@ export default function ProjectDetailScreen() {
                       {contact.name}
                     </Text>
                     <Text className="text-xs text-gray-500 mt-0.5">
-                      {contact.count} transactions
+                      {contact.count} transaction{contact.count !== 1 ? "s" : ""}
                     </Text>
                   </View>
                   <Text className="text-sm font-semibold text-gray-900">
@@ -230,62 +222,10 @@ export default function ProjectDetailScreen() {
                 </View>
               ))}
             </View>
-          </View>
-        )}
-
-        {/* Recent Transactions */}
-        <View className="px-4 mb-6">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-base font-semibold text-gray-900">
-              Recent Transactions
-            </Text>
-            {transactions.length > 0 && (
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: ROUTES.TRANSACTIONS,
-                    params: { projectId: id },
-                  } as any)
-                }
-              >
-                <Text className="text-sm text-primary font-medium">View All</Text>
-              </Pressable>
-            )}
-          </View>
-
-          {transactions.length === 0 ? (
-            <View style={styles.emptyState} className="bg-white rounded-2xl p-6 items-center">
-              <Lucide name="receipt" size={24} color={COLORS.gray400} />
-              <Text className="text-sm text-gray-500 mt-2">No transactions yet</Text>
-            </View>
           ) : (
-            <View style={styles.sectionCard} className="bg-white rounded-2xl overflow-hidden">
-              {transactions.slice(0, 5).map((t, index) => (
-                <View
-                  key={t.id}
-                  className={`flex-row items-center justify-between px-4 py-3 ${
-                    index < Math.min(transactions.length, 5) - 1
-                      ? "border-b border-gray-100"
-                      : ""
-                  }`}
-                >
-                  <View className="flex-1">
-                    <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>
-                      {t.contactName || "Unknown"}
-                    </Text>
-                    <Text className="text-xs text-gray-500 mt-0.5">
-                      {t.categoryName || "Uncategorized"}
-                    </Text>
-                  </View>
-                  <Text
-                    className="text-sm font-semibold"
-                    style={{ color: t.type === "expense" ? COLORS.error : COLORS.success }}
-                  >
-                    {t.type === "expense" ? "-" : "+"}
-                    {formatAmount(t.amountINR)}
-                  </Text>
-                </View>
-              ))}
+            <View style={styles.emptyState} className="bg-white rounded-2xl p-6 items-center">
+              <Lucide name="users" size={24} color={COLORS.gray400} />
+              <Text className="text-sm text-gray-500 mt-2">No contacts yet</Text>
             </View>
           )}
         </View>

@@ -2320,9 +2320,9 @@ Parse.Cloud.define("getProjectSummary", async (request) => {
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5)
       .map((c) => ({ ...c, percentage: totalExpenses > 0 ? (c.amount / totalExpenses) * 100 : 0 })),
-    topContacts: Object.values(contactTotals)
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5),
+    // All contacts with transactions in this project (sorted by amount)
+    contacts: Object.values(contactTotals)
+      .sort((a, b) => b.amount - a.amount),
     monthlyTrend: Object.values(monthlyData)
       .sort((a, b) => a.month.localeCompare(b.month))
       .map((m) => ({ ...m, net: m.income - m.expenses })),

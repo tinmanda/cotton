@@ -347,7 +347,8 @@ export interface IProjectSummary {
     amount: number;
     percentage: number;
   }>;
-  topContacts: Array<{
+  /** All contacts with transactions in this project (sorted by amount) */
+  contacts: Array<{
     id: string;
     name: string;
     amount: number;
