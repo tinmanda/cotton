@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
-import { COLORS } from "@/constants";
+import { COLORS, ROUTES } from "@/constants";
 import { FinanceService } from "@/services";
 import { IProjectSummary } from "@/types";
 import { useToast } from "@/hooks/useToast";
@@ -202,9 +202,19 @@ export default function ProjectDetailScreen() {
           {summary.contacts && summary.contacts.length > 0 ? (
             <View style={styles.sectionCard} className="bg-white rounded-2xl overflow-hidden">
               {summary.contacts.map((contact, index) => (
-                <View
+                <Pressable
                   key={contact.id}
-                  className={`flex-row items-center justify-between px-4 py-3 ${
+                  onPress={() =>
+                    router.push({
+                      pathname: ROUTES.TRANSACTIONS,
+                      params: {
+                        projectId: id,
+                        contactId: contact.id,
+                        contactName: contact.name,
+                      },
+                    } as any)
+                  }
+                  className={`flex-row items-center justify-between px-4 py-3 active:bg-gray-50 ${
                     index < summary.contacts.length - 1 ? "border-b border-gray-100" : ""
                   }`}
                 >
@@ -216,10 +226,13 @@ export default function ProjectDetailScreen() {
                       {contact.count} transaction{contact.count !== 1 ? "s" : ""}
                     </Text>
                   </View>
-                  <Text className="text-sm font-semibold text-gray-900">
-                    {formatAmount(contact.amount)}
-                  </Text>
-                </View>
+                  <View className="flex-row items-center">
+                    <Text className="text-sm font-semibold text-gray-900 mr-2">
+                      {formatAmount(contact.amount)}
+                    </Text>
+                    <Lucide name="chevron-right" size={16} color={COLORS.gray400} />
+                  </View>
+                </Pressable>
               ))}
             </View>
           ) : (

@@ -71,7 +71,11 @@ type FilterType = "all" | "income" | "expense";
 
 export default function TransactionsScreen() {
   const router = useRouter();
-  const { projectId } = useLocalSearchParams<{ projectId?: string }>();
+  const { projectId, contactId, contactName: urlContactName } = useLocalSearchParams<{
+    projectId?: string;
+    contactId?: string;
+    contactName?: string;
+  }>();
   const { showError } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -81,6 +85,7 @@ export default function TransactionsScreen() {
   const [filter, setFilter] = useState<FilterType>("all");
   const [totals, setTotals] = useState({ income: 0, expenses: 0 });
   const [projectName, setProjectName] = useState<string | null>(null);
+  const [contactName, setContactName] = useState<string | null>(urlContactName || null);
 
   const loadTransactions = useCallback(
     async (reset = true, showLoader = true) => {
@@ -91,6 +96,7 @@ export default function TransactionsScreen() {
         const result = await FinanceService.getTransactions({
           type: filter === "all" ? undefined : filter,
           projectId: projectId || undefined,
+          contactId: contactId || undefined,
           limit: 30,
           skip: reset ? 0 : transactions.length,
         });
@@ -103,9 +109,14 @@ export default function TransactionsScreen() {
               income: result.data.totalIncome,
               expenses: result.data.totalExpenses,
             });
-            // Get project name from first transaction if filtering by project
-            if (projectId && result.data.transactions.length > 0) {
-              setProjectName(result.data.transactions[0].projectName || null);
+            // Get project/contact name from first transaction if filtering
+            if (result.data.transactions.length > 0) {
+              if (projectId) {
+                setProjectName(result.data.transactions[0].projectName || null);
+              }
+              if (contactId && !urlContactName) {
+                setContactName(result.data.transactions[0].contactName || null);
+              }
             }
           } else {
             setTransactions((prev) => [...prev, ...result.data.transactions]);
@@ -120,13 +131,13 @@ export default function TransactionsScreen() {
         setIsLoadingMore(false);
       }
     },
-    [filter, projectId, transactions.length, showError]
+    [filter, projectId, contactId, urlContactName, transactions.length, showError]
   );
 
   useFocusEffect(
     useCallback(() => {
       loadTransactions();
-    }, [filter, projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [filter, projectId, contactId]) // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const onRefresh = useCallback(() => {
@@ -157,17 +168,18 @@ export default function TransactionsScreen() {
       {/* Header */}
       <View className="bg-white px-6 py-4 border-b border-gray-100">
         <View className="flex-row items-center">
-          {projectId && (
+          {(projectId || contactId) && (
             <Pressable onPress={() => router.back()} className="mr-3" hitSlop={10}>
               <Lucide name="chevron-left" size={24} color={COLORS.gray700} />
             </Pressable>
           )}
-          <View>
-            <Text className="text-2xl font-bold text-gray-900">
-              {projectName ? `${projectName}` : "Transactions"}
+          <View className="flex-1">
+            <Text className="text-2xl font-bold text-gray-900" numberOfLines={1}>
+              {contactName || projectName || "Transactions"}
             </Text>
             <Text className="text-sm text-gray-500 mt-0.5">
-              {transactions.length} transactions
+              {contactName && projectName ? `${projectName} • ` : ""}
+              {transactions.length} transaction{transactions.length !== 1 ? "s" : ""}
             </Text>
           </View>
         </View>
