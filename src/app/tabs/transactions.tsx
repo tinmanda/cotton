@@ -23,7 +23,7 @@ function formatAmount(amount: number, currency: string = "INR"): string {
   return `₹${amount.toLocaleString("en-IN")}`;
 }
 
-function formatDate(date: Date): string {
+function formatDate(date: Date, includeYear = false): string {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
@@ -31,21 +31,40 @@ function formatDate(date: Date): string {
 
   if (transDate.getTime() === today.getTime()) return "Today";
   if (transDate.getTime() === yesterday.getTime()) return "Yesterday";
+
+  // Include year if it's different from current year, or if explicitly requested
+  const showYear = includeYear || date.getFullYear() !== now.getFullYear();
+  if (showYear) {
+    return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  }
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
-function groupTransactionsByDate(transactions: ITransaction[]): { date: string; data: ITransaction[] }[] {
-  const groups: Record<string, ITransaction[]> = {};
+/**
+ * Create a unique date key that always includes year for proper grouping
+ */
+function getDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function groupTransactionsByDate(transactions: ITransaction[]): { date: string; dateKey: string; data: ITransaction[] }[] {
+  const groups: Record<string, { displayDate: string; data: ITransaction[] }> = {};
 
   for (const t of transactions) {
-    const dateKey = formatDate(t.date);
+    const dateKey = getDateKey(t.date);
     if (!groups[dateKey]) {
-      groups[dateKey] = [];
+      groups[dateKey] = {
+        displayDate: formatDate(t.date),
+        data: [],
+      };
     }
-    groups[dateKey].push(t);
+    groups[dateKey].data.push(t);
   }
 
-  return Object.entries(groups).map(([date, data]) => ({ date, data }));
+  // Sort by date key (descending - most recent first) and return
+  return Object.entries(groups)
+    .sort(([keyA], [keyB]) => keyB.localeCompare(keyA))
+    .map(([dateKey, { displayDate, data }]) => ({ date: displayDate, dateKey, data }));
 }
 
 type FilterType = "all" | "income" | "expense";
@@ -192,7 +211,7 @@ export default function TransactionsScreen() {
       ) : (
         <FlatList
           data={groupedTransactions}
-          keyExtractor={(item) => item.date}
+          keyExtractor={(item) => item.dateKey}
           renderItem={({ item }) => (
             <View className="mt-4">
               <Text className="px-4 text-xs font-semibold text-gray-500 uppercase mb-2">
