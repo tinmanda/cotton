@@ -1,7 +1,7 @@
 {
   "name": "cotton",
   "main": "expo-router/entry",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
@@ -15,6 +15,7 @@
     "@gorhom/bottom-sheet": "^5",
     "@parse/react-native": "^0.0.1-alpha.18",
     "@react-native-async-storage/async-storage": "^2.2.0",
+    "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-vector-icons/lucide": "^12.3.0",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",

@@ -8,10 +8,12 @@ import {
   StyleSheet,
   ActivityIndicator,
   Modal,
+  Platform,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { COLORS, ROUTES } from "@/constants";
 import { FinanceService } from "@/services";
 import { ITransaction, ICategory, IProject, IContact, TransactionType, Currency } from "@/types";
@@ -49,7 +51,8 @@ export default function EditTransactionScreen() {
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState<Currency>("INR");
   const [type, setType] = useState<TransactionType>("expense");
-  const [date, setDate] = useState(formatDateForInput(new Date()));
+  const [date, setDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [contactId, setContactId] = useState<string | null>(null);
   const [contactName, setContactName] = useState("");
   const [showContactPicker, setShowContactPicker] = useState(false);
@@ -82,7 +85,7 @@ export default function EditTransactionScreen() {
           setAmount(found.amount.toString());
           setCurrency(found.currency);
           setType(found.type);
-          setDate(formatDateForInput(found.date));
+          setDate(new Date(found.date));
           setContactId(found.contactId || null);
           setContactName(found.contactName || "");
           setCategoryId(found.categoryId || null);
@@ -109,7 +112,7 @@ export default function EditTransactionScreen() {
     ? amount !== transaction.amount.toString() ||
       currency !== transaction.currency ||
       type !== transaction.type ||
-      date !== formatDateForInput(transaction.date) ||
+      formatDateForInput(date) !== formatDateForInput(new Date(transaction.date)) ||
       contactId !== (transaction.contactId || null) ||
       contactName !== (transaction.contactName || "") ||
       categoryId !== (transaction.categoryId || null) ||
@@ -135,7 +138,7 @@ export default function EditTransactionScreen() {
         amount: amountNum,
         currency,
         type,
-        date,
+        date: formatDateForInput(date),
         contactName: contactName.trim(),
         categoryId,
         projectId,
@@ -318,16 +321,18 @@ export default function EditTransactionScreen() {
           {/* Date */}
           <View style={styles.card} className="bg-white rounded-2xl p-4 mb-3">
             <Text className="text-sm font-medium text-gray-500 mb-2">Date</Text>
-            <View className="bg-gray-100 rounded-xl px-4 py-3.5 flex-row items-center">
-              <Lucide name="calendar" size={18} color={COLORS.gray500} />
-              <TextInput
-                value={date}
-                onChangeText={setDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={COLORS.gray400}
-                style={{ flex: 1, marginLeft: 12, fontSize: 16, color: COLORS.gray900 }}
-              />
-            </View>
+            <Pressable
+              onPress={() => setShowDatePicker(true)}
+              className="bg-gray-100 rounded-xl px-4 py-3.5 flex-row items-center justify-between"
+            >
+              <View className="flex-row items-center">
+                <Lucide name="calendar" size={18} color={COLORS.gray500} />
+                <Text className="ml-3 text-base text-gray-900">
+                  {formatDateForDisplay(date)}
+                </Text>
+              </View>
+              <Lucide name="chevron-down" size={18} color={COLORS.gray400} />
+            </Pressable>
           </View>
 
           {/* Contact */}
@@ -513,6 +518,50 @@ export default function EditTransactionScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Date Picker */}
+      {showDatePicker && (
+        Platform.OS === "ios" ? (
+          <Modal visible={showDatePicker} transparent animationType="slide">
+            <View style={styles.datePickerOverlay}>
+              <View style={styles.datePickerContainer}>
+                <View style={styles.datePickerHeader}>
+                  <Pressable onPress={() => setShowDatePicker(false)}>
+                    <Text className="text-base text-gray-500">Cancel</Text>
+                  </Pressable>
+                  <Text className="text-base font-semibold text-gray-900">Select Date</Text>
+                  <Pressable onPress={() => setShowDatePicker(false)}>
+                    <Text className="text-base font-semibold text-primary">Done</Text>
+                  </Pressable>
+                </View>
+                <DateTimePicker
+                  value={date}
+                  mode="date"
+                  display="spinner"
+                  onChange={(event: DateTimePickerEvent, selectedDate?: Date) => {
+                    if (selectedDate) {
+                      setDate(selectedDate);
+                    }
+                  }}
+                  style={{ height: 200 }}
+                />
+              </View>
+            </View>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={date}
+            mode="date"
+            display="default"
+            onChange={(event: DateTimePickerEvent, selectedDate?: Date) => {
+              setShowDatePicker(false);
+              if (event.type === "set" && selectedDate) {
+                setDate(selectedDate);
+              }
+            }}
+          />
+        )
+      )}
 
       {/* Contact Picker Modal */}
       <Modal visible={showContactPicker} transparent={false} animationType="slide">
@@ -769,5 +818,25 @@ const styles = StyleSheet.create({
     backgroundColor: `${COLORS.primary}15`,
     alignItems: "center",
     justifyContent: "center",
+  },
+  datePickerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  datePickerContainer: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+  },
+  datePickerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray100,
   },
 });

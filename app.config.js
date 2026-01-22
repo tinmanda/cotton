@@ -44,6 +44,7 @@ module.exports = {
         },
       ],
       "expo-web-browser",
+      "@react-native-community/datetimepicker",
     ],
     experiments: {
       typedRoutes: true,
