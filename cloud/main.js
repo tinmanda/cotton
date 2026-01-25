@@ -406,26 +406,82 @@ function transformRecurringTransaction(rt) {
 }
 
 /**
- * Calculate next due date based on frequency and last created date
+ * Calculate next due date based on frequency, aligned to calendar boundaries
+ * - Weekly: End of week (Sunday)
+ * - Monthly: End of month (last day)
+ * - Quarterly: End of quarter (Mar 31, Jun 30, Sep 30, Dec 31)
+ * - Yearly: End of year (Dec 31)
  */
 function calculateNextDueDate(frequency, lastCreatedAt) {
-  const base = lastCreatedAt ? new Date(lastCreatedAt) : new Date();
-  const next = new Date(base);
+  const now = new Date();
+  const next = new Date(now);
 
   switch (frequency) {
-    case "weekly":
-      next.setDate(next.getDate() + 7);
+    case "weekly": {
+      // Get end of current week (Sunday)
+      const dayOfWeek = next.getDay(); // 0 = Sunday, 6 = Saturday
+      const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+      next.setDate(next.getDate() + daysUntilSunday);
+      // If today is Sunday and we already created a transaction, go to next Sunday
+      if (lastCreatedAt && daysUntilSunday === 0) {
+        next.setDate(next.getDate() + 7);
+      }
       break;
-    case "monthly":
-      next.setMonth(next.getMonth() + 1);
+    }
+    case "monthly": {
+      // Get end of current month
+      next.setMonth(next.getMonth() + 1, 0); // Day 0 of next month = last day of current month
+      // If we're past the end of month or just created one, go to next month's end
+      if (lastCreatedAt && new Date(lastCreatedAt).getMonth() === now.getMonth()) {
+        next.setMonth(next.getMonth() + 2, 0);
+      }
       break;
-    case "quarterly":
-      next.setMonth(next.getMonth() + 3);
+    }
+    case "quarterly": {
+      // Quarter ends: Mar 31, Jun 30, Sep 30, Dec 31
+      const currentMonth = next.getMonth();
+      const quarterEndMonths = [2, 5, 8, 11]; // March, June, September, December (0-indexed)
+
+      // Find the next quarter end
+      let targetMonth = quarterEndMonths.find(m => m >= currentMonth);
+      if (targetMonth === undefined) {
+        // We're past December, go to next year's March
+        targetMonth = 2;
+        next.setFullYear(next.getFullYear() + 1);
+      }
+
+      // Set to end of that quarter month
+      next.setMonth(targetMonth + 1, 0);
+
+      // If we just created one this quarter, go to next quarter
+      if (lastCreatedAt) {
+        const lastDate = new Date(lastCreatedAt);
+        const lastQuarter = Math.floor(lastDate.getMonth() / 3);
+        const currentQuarter = Math.floor(now.getMonth() / 3);
+        if (lastQuarter === currentQuarter && lastDate.getFullYear() === now.getFullYear()) {
+          // Move to next quarter
+          const nextQuarterMonth = quarterEndMonths[(currentQuarter + 1) % 4];
+          if (currentQuarter === 3) {
+            next.setFullYear(next.getFullYear() + 1);
+          }
+          next.setMonth(nextQuarterMonth + 1, 0);
+        }
+      }
       break;
-    case "yearly":
-      next.setFullYear(next.getFullYear() + 1);
+    }
+    case "yearly": {
+      // End of year (Dec 31)
+      next.setMonth(11, 31); // December 31
+      // If we just created one this year, go to next year
+      if (lastCreatedAt && new Date(lastCreatedAt).getFullYear() === now.getFullYear()) {
+        next.setFullYear(next.getFullYear() + 1);
+      }
       break;
+    }
   }
+
+  // Set time to end of day
+  next.setHours(23, 59, 59, 999);
 
   return next;
 }
