@@ -27,9 +27,7 @@ export const ROUTES = {
   FLAGGED_TRANSACTIONS: "/transactions/flagged",
 
   // Settings screens
-  CUSTOMERS: "/settings/contacts?type=customer",
-  SUPPLIERS: "/settings/contacts?type=supplier",
-  EMPLOYEES: "/settings/employees",
+  CONTACTS: "/settings/contacts",
   CATEGORIES: "/settings/categories",
 
   // Contact screens

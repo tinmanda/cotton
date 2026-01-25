@@ -15,7 +15,7 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { COLORS, ROUTES } from "@/constants";
 import { FinanceService } from "@/services";
-import { IProjectSummary, ITransaction, ContactType } from "@/types";
+import { IProjectSummary, ITransaction } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
 function formatAmount(amount: number): string {
@@ -133,7 +133,6 @@ interface ContactListSectionProps {
   contacts: Array<{
     id: string;
     name: string;
-    types: ContactType[];
     amount: number;
     count: number;
   }>;
@@ -396,9 +395,9 @@ export default function ProjectDetailScreen() {
               <Lucide name="users" size={18} color={COLORS.primary} />
             </View>
             <Text className="text-lg font-bold text-gray-900 mt-2">
-              {summary.employeeCount}
+              {summary.contacts?.length || 0}
             </Text>
-            <Text className="text-xs text-gray-500">Employees</Text>
+            <Text className="text-xs text-gray-500">Contacts</Text>
           </View>
         </View>
 
@@ -438,25 +437,11 @@ export default function ProjectDetailScreen() {
           </View>
         )}
 
-        {/* Contact Lists by Type */}
+        {/* Contacts */}
         <ContactListSection
-          title="Customers"
-          icon="user"
-          contacts={summary.contacts?.filter((c) => c.types?.includes("customer")) || []}
-          projectId={id!}
-          router={router}
-        />
-        <ContactListSection
-          title="Suppliers"
-          icon="truck"
-          contacts={summary.contacts?.filter((c) => c.types?.includes("supplier")) || []}
-          projectId={id!}
-          router={router}
-        />
-        <ContactListSection
-          title="Employees"
-          icon="briefcase"
-          contacts={summary.contacts?.filter((c) => c.types?.includes("employee")) || []}
+          title="Contacts"
+          icon="users"
+          contacts={summary.contacts || []}
           projectId={id!}
           router={router}
         />

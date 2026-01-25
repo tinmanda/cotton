@@ -16,7 +16,7 @@ import { Lucide } from "@react-native-vector-icons/lucide";
 import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { COLORS, buildRoute } from "@/constants";
 import { FinanceService } from "@/services";
-import { IContact, ITransaction, IProject, Currency, EmployeeStatus } from "@/types";
+import { IContact, ITransaction } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
 function formatAmount(amount: number, currency: string = "INR"): string {
@@ -24,14 +24,6 @@ function formatAmount(amount: number, currency: string = "INR"): string {
     return `$${amount.toLocaleString("en-US")}`;
   }
   return `₹${amount.toLocaleString("en-IN")}`;
-}
-
-function formatSalary(amount: number | undefined, currency: Currency | undefined): string {
-  if (!amount) return "Not set";
-  if (currency === "USD") {
-    return `$${amount.toLocaleString("en-US")}/mo`;
-  }
-  return `₹${amount.toLocaleString("en-IN")}/mo`;
 }
 
 function formatDate(date: Date): string {
@@ -53,9 +45,6 @@ export default function ContactDetailScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
-  const [projects, setProjects] = useState<IProject[]>([]);
-
-  const isEmployee = contact?.types.includes("employee");
 
   const loadData = useCallback(
     async (showLoader = true, loadMore = false) => {
@@ -64,10 +53,9 @@ export default function ContactDetailScreen() {
       if (loadMore) setIsLoadingMore(true);
 
       try {
-        // Load contact, projects, and transactions
-        const [contactsResult, projectsResult, transactionsResult] = await Promise.all([
+        // Load contact and transactions
+        const [contactsResult, transactionsResult] = await Promise.all([
           FinanceService.getContacts({}),
-          FinanceService.getProjects(),
           FinanceService.getTransactions({
             contactId: id,
             limit: 20,
@@ -85,10 +73,6 @@ export default function ContactDetailScreen() {
             router.back();
             return;
           }
-        }
-
-        if (projectsResult.success) {
-          setProjects(projectsResult.data);
         }
 
         if (transactionsResult.success) {
@@ -131,13 +115,6 @@ export default function ContactDetailScreen() {
     setEditModalVisible(false);
     loadData();
     showSuccess("Contact updated");
-  };
-
-  // Determine icon based on contact type
-  const getContactIcon = () => {
-    if (contact?.types.includes("employee")) return "user";
-    if (contact?.types.includes("supplier")) return "store";
-    return "user";
   };
 
   if (isLoading || !contact) {
@@ -184,72 +161,15 @@ export default function ContactDetailScreen() {
             <View style={styles.infoCard} className="mx-4 mt-4 bg-white rounded-2xl p-5">
               <View className="flex-row items-center mb-4">
                 <View style={styles.contactIconLarge}>
-                  <Lucide name={getContactIcon()} size={28} color={COLORS.primary} />
+                  <Lucide name="user" size={28} color={COLORS.primary} />
                 </View>
                 <View className="flex-1 ml-4">
                   <Text className="text-xl font-bold text-gray-900">{contact.name}</Text>
-                  <View className="flex-row flex-wrap gap-1 mt-1">
-                    {contact.types.map((type) => (
-                      <View key={type} style={styles.typeBadge} className="px-2 py-0.5 rounded-full">
-                        <Text className="text-xs font-medium text-primary capitalize">{type}</Text>
-                      </View>
-                    ))}
-                  </View>
+                  <Text className="text-sm text-gray-500 mt-1">
+                    {contact.transactionCount} transactions
+                  </Text>
                 </View>
               </View>
-
-              {/* Employee-specific info */}
-              {isEmployee && (
-                <View className="border-t border-gray-100 pt-4 mt-2">
-                  <View className="flex-row items-center justify-between mb-2">
-                    <Text className="text-sm text-gray-500">Role</Text>
-                    <Text className="text-sm font-medium text-gray-900">
-                      {contact.role || "Not set"}
-                    </Text>
-                  </View>
-                  <View className="flex-row items-center justify-between mb-2">
-                    <Text className="text-sm text-gray-500">Monthly Salary</Text>
-                    <Text className="text-sm font-bold text-gray-900">
-                      {formatSalary(contact.monthlySalary, contact.salaryCurrency)}
-                    </Text>
-                  </View>
-                  {contact.projectName && (
-                    <View className="flex-row items-center justify-between mb-2">
-                      <Text className="text-sm text-gray-500">Project</Text>
-                      <Text className="text-sm font-medium text-gray-900">
-                        {contact.projectName}
-                      </Text>
-                    </View>
-                  )}
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-sm text-gray-500">Status</Text>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        {
-                          backgroundColor:
-                            contact.employeeStatus === "active"
-                              ? `${COLORS.success}15`
-                              : `${COLORS.gray400}15`,
-                        },
-                      ]}
-                      className="px-2 py-0.5 rounded-full"
-                    >
-                      <Text
-                        className="text-xs font-medium capitalize"
-                        style={{
-                          color:
-                            contact.employeeStatus === "active"
-                              ? COLORS.success
-                              : COLORS.gray500,
-                        }}
-                      >
-                        {contact.employeeStatus || "active"}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              )}
 
               {/* Contact details */}
               {(contact.email || contact.phone || contact.company) && (
@@ -344,22 +264,12 @@ export default function ContactDetailScreen() {
       />
 
       {/* Edit Modal */}
-      {isEmployee ? (
-        <EmployeeEditModal
-          visible={editModalVisible}
-          employee={contact}
-          projects={projects}
-          onClose={() => setEditModalVisible(false)}
-          onSaved={handleEditSaved}
-        />
-      ) : (
-        <ContactEditModal
-          visible={editModalVisible}
-          contact={contact}
-          onClose={() => setEditModalVisible(false)}
-          onSaved={handleEditSaved}
-        />
-      )}
+      <ContactEditModal
+        visible={editModalVisible}
+        contact={contact}
+        onClose={() => setEditModalVisible(false)}
+        onSaved={handleEditSaved}
+      />
     </SafeAreaView>
   );
 }
@@ -555,222 +465,6 @@ function ContactEditModal({
   );
 }
 
-function EmployeeEditModal({
-  visible,
-  employee,
-  projects,
-  onClose,
-  onSaved,
-}: {
-  visible: boolean;
-  employee: IContact;
-  projects: IProject[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const { showError } = useToast();
-  const [name, setName] = useState(employee.name);
-  const [role, setRole] = useState(employee.role || "");
-  const [projectId, setProjectId] = useState<string | undefined>(employee.projectId);
-  const [salary, setSalary] = useState(employee.monthlySalary?.toString() || "");
-  const [status, setStatus] = useState<EmployeeStatus>(employee.employeeStatus || "active");
-  const [isSaving, setIsSaving] = useState(false);
-
-  const handleSave = async () => {
-    if (name.trim().length < 2) {
-      showError("Name must be at least 2 characters");
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const result = await FinanceService.updateContact({
-        contactId: employee.id,
-        name: name.trim(),
-        role: role.trim() || undefined,
-        projectId: projectId || undefined,
-        monthlySalary: salary ? parseFloat(salary) : undefined,
-        employeeStatus: status,
-      });
-
-      if (result.success) {
-        onSaved();
-      } else {
-        showError(result.error.message);
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const hasChanges =
-    name !== employee.name ||
-    role !== (employee.role || "") ||
-    projectId !== employee.projectId ||
-    salary !== (employee.monthlySalary?.toString() || "") ||
-    status !== (employee.employeeStatus || "active");
-
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <SafeAreaView className="flex-1 bg-white">
-        <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-100">
-          <Pressable onPress={onClose} className="px-2 py-1">
-            <Text className="text-base text-gray-600">Cancel</Text>
-          </Pressable>
-          <Text className="text-lg font-semibold text-gray-900">Edit Employee</Text>
-          <Pressable
-            onPress={handleSave}
-            disabled={isSaving || !hasChanges}
-            className="px-2 py-1"
-          >
-            {isSaving ? (
-              <ActivityIndicator size="small" color={COLORS.primary} />
-            ) : (
-              <Text
-                className={`text-base font-semibold ${
-                  hasChanges ? "text-primary" : "text-gray-300"
-                }`}
-              >
-                Save
-              </Text>
-            )}
-          </Pressable>
-        </View>
-
-        <ScrollView className="flex-1 px-6 pt-6">
-          <View className="mb-5">
-            <Text className="text-sm font-medium text-gray-500 mb-2">Name</Text>
-            <View className="bg-gray-100 rounded-xl px-4 py-4">
-              <TextInput
-                value={name}
-                onChangeText={setName}
-                placeholder="Employee name"
-                placeholderTextColor={COLORS.gray400}
-                autoCapitalize="words"
-                style={{ fontSize: 16, color: COLORS.gray900 }}
-              />
-            </View>
-          </View>
-
-          <View className="mb-5">
-            <Text className="text-sm font-medium text-gray-500 mb-2">Role</Text>
-            <View className="bg-gray-100 rounded-xl px-4 py-4">
-              <TextInput
-                value={role}
-                onChangeText={setRole}
-                placeholder="e.g., Developer, Designer"
-                placeholderTextColor={COLORS.gray400}
-                autoCapitalize="words"
-                style={{ fontSize: 16, color: COLORS.gray900 }}
-              />
-            </View>
-          </View>
-
-          <View className="mb-5">
-            <Text className="text-sm font-medium text-gray-500 mb-2">Project</Text>
-            <View className="flex-row flex-wrap gap-2">
-              {projects.map((p) => (
-                <Pressable
-                  key={p.id}
-                  onPress={() => setProjectId(p.id)}
-                  style={[
-                    styles.projectChip,
-                    projectId === p.id && styles.projectChipSelected,
-                  ]}
-                  className="flex-row items-center px-4 py-2.5 rounded-xl"
-                >
-                  <View
-                    style={{ backgroundColor: p.color, width: 10, height: 10, borderRadius: 5 }}
-                    className="mr-2"
-                  />
-                  <Text
-                    className={`text-sm font-medium ${
-                      projectId === p.id ? "text-primary" : "text-gray-600"
-                    }`}
-                  >
-                    {p.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          <View className="mb-5">
-            <Text className="text-sm font-medium text-gray-500 mb-2">Monthly Salary</Text>
-            <View className="bg-gray-100 rounded-xl px-4 py-4 flex-row items-center">
-              <Text className="text-gray-500 mr-1">₹</Text>
-              <TextInput
-                value={salary}
-                onChangeText={setSalary}
-                placeholder="50000"
-                placeholderTextColor={COLORS.gray400}
-                keyboardType="numeric"
-                style={{ fontSize: 16, color: COLORS.gray900, flex: 1 }}
-              />
-            </View>
-          </View>
-
-          <View className="mb-5">
-            <Text className="text-sm font-medium text-gray-500 mb-2">Status</Text>
-            <View className="flex-row gap-2">
-              <Pressable
-                onPress={() => setStatus("active")}
-                style={[
-                  styles.statusChip,
-                  status === "active" && styles.statusChipActive,
-                ]}
-                className="flex-row items-center px-4 py-2.5 rounded-xl"
-              >
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: status === "active" ? COLORS.success : COLORS.gray400,
-                    marginRight: 8,
-                  }}
-                />
-                <Text
-                  className={`text-sm font-medium ${
-                    status === "active" ? "text-success" : "text-gray-600"
-                  }`}
-                >
-                  Active
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setStatus("inactive")}
-                style={[
-                  styles.statusChip,
-                  status === "inactive" && styles.statusChipInactive,
-                ]}
-                className="flex-row items-center px-4 py-2.5 rounded-xl"
-              >
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: status === "inactive" ? COLORS.gray500 : COLORS.gray400,
-                    marginRight: 8,
-                  }}
-                />
-                <Text
-                  className={`text-sm font-medium ${
-                    status === "inactive" ? "text-gray-700" : "text-gray-600"
-                  }`}
-                >
-                  Inactive
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
   infoCard: {
     shadowColor: COLORS.shadow,
@@ -787,10 +481,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  typeBadge: {
-    backgroundColor: `${COLORS.primary}15`,
-  },
-  statusBadge: {},
   transactionCard: {
     shadowColor: COLORS.shadow,
     shadowOffset: { width: 0, height: 1 },
@@ -812,27 +502,5 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray100,
     alignItems: "center",
     justifyContent: "center",
-  },
-  projectChip: {
-    backgroundColor: COLORS.gray100,
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-  },
-  projectChipSelected: {
-    backgroundColor: `${COLORS.primary}10`,
-    borderColor: COLORS.primary,
-  },
-  statusChip: {
-    backgroundColor: COLORS.gray100,
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-  },
-  statusChipActive: {
-    backgroundColor: `${COLORS.success}10`,
-    borderColor: COLORS.success,
-  },
-  statusChipInactive: {
-    backgroundColor: COLORS.gray100,
-    borderColor: COLORS.gray400,
   },
 });

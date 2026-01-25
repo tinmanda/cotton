@@ -91,22 +91,10 @@ export default function ProfileScreen() {
       title: "Business Settings",
       items: [
         {
-          icon: "user",
-          label: "Customers",
-          subtitle: "Manage your clients",
-          route: ROUTES.CUSTOMERS,
-        },
-        {
-          icon: "store",
-          label: "Suppliers",
-          subtitle: "Manage your vendors",
-          route: ROUTES.SUPPLIERS,
-        },
-        {
           icon: "users",
-          label: "Employees",
-          subtitle: "Manage team members",
-          route: ROUTES.EMPLOYEES,
+          label: "Contacts",
+          subtitle: "Manage your contacts",
+          route: ROUTES.CONTACTS,
         },
         {
           icon: "tags",

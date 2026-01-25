@@ -11,8 +11,6 @@ export type TransactionType = "income" | "expense";
 export type Currency = "INR" | "USD";
 export type ProjectStatus = "active" | "paused" | "closed";
 export type ProjectType = "service" | "product" | "investment" | "other";
-export type ContactType = "customer" | "supplier" | "employee";
-export type EmployeeStatus = "active" | "inactive";
 export type RawInputStatus = "pending" | "processed" | "failed";
 export type RawInputSource = "sms" | "email" | "manual" | "voice";
 
@@ -51,12 +49,11 @@ export interface ICategory {
 }
 
 /**
- * Contact - Unified entity for customers, suppliers, and employees
+ * Contact - A person or business you transact with
  */
 export interface IContact {
   id: string;
   name: string;
-  types: ContactType[]; // Can be multiple: customer, supplier, employee
   aliases: string[]; // Alternative names for AI matching
   email?: string;
   phone?: string;
@@ -67,12 +64,7 @@ export interface IContact {
   totalReceived: number; // Aggregated income total
   transactionCount: number;
   defaultCategoryId?: string;
-  // Employee-specific fields (optional)
-  role?: string;
-  monthlySalary?: number;
-  salaryCurrency?: Currency;
-  employeeStatus?: EmployeeStatus;
-  projectId?: string;
+  projectId?: string; // Optional project association
   projectName?: string; // Denormalized for display
   createdAt: Date;
   updatedAt: Date;
@@ -170,7 +162,6 @@ export interface ParseTransactionResponse {
   existingContact?: {
     id: string;
     name: string;
-    types: ContactType[];
   };
   suggestedCategory?: ICategory;
   suggestedProject?: IProject;
@@ -215,10 +206,7 @@ export interface ParsedBulkTransaction {
 export interface ParsedContactInfo {
   id: string;
   name: string;
-  types: ContactType[];
   aliases: string[];
-  role?: string;
-  monthlySalary?: number;
   projectId?: string;
 }
 
@@ -280,7 +268,6 @@ export interface CreateBulkTransactionsRequest {
     type: TransactionType;
     date: string;
     contactName: string;
-    contactType?: ContactType; // Override AI-detected contact type
     categoryId?: string;
     projectId?: string;
     description?: string;
@@ -341,7 +328,6 @@ export interface IProjectSummary {
   totalExpenses: number;
   netAmount: number;
   transactionCount: number;
-  employeeCount: number;
   topCategories: Array<{
     category: ICategory;
     amount: number;
@@ -351,7 +337,6 @@ export interface IProjectSummary {
   contacts: Array<{
     id: string;
     name: string;
-    types: ContactType[];
     amount: number;
     count: number;
   }>;
@@ -373,7 +358,6 @@ export interface IDashboardSummary {
   transactionCount: number;
   projectCount: number;
   contactCount: number;
-  employeeCount: number;
   recentTransactions: ITransaction[];
   projectSummaries: Array<{
     project: IProject;

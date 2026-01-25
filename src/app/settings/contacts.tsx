@@ -11,53 +11,29 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { COLORS, buildRoute } from "@/constants";
 import { FinanceService } from "@/services";
-import { IContact, ContactType } from "@/types";
+import { IContact } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
 function formatAmount(amount: number): string {
   return `₹${amount.toLocaleString("en-IN")}`;
 }
 
-// Screen config based on contact type
-const screenConfig = {
-  customer: {
-    title: "Customers",
-    subtitle: "clients",
-    icon: "user" as const,
-    emptyText: "No customers yet",
-    emptySubtext: "Customers are automatically created when you add income transactions",
-  },
-  supplier: {
-    title: "Suppliers",
-    subtitle: "vendors",
-    icon: "store" as const,
-    emptyText: "No suppliers yet",
-    emptySubtext: "Suppliers are automatically created when you add expense transactions",
-  },
-};
-
 export default function ContactsScreen() {
   const router = useRouter();
-  const { type } = useLocalSearchParams<{ type?: string }>();
   const { showError } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [contacts, setContacts] = useState<IContact[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Determine which type to show (default to supplier if not specified)
-  const contactType = (type === "customer" || type === "supplier") ? type : "supplier";
-  const config = screenConfig[contactType];
-
   const loadContacts = useCallback(
     async (showLoader = true) => {
       if (showLoader) setIsLoading(true);
       try {
         const result = await FinanceService.getContacts({
-          type: contactType as ContactType,
           search: searchQuery || undefined,
         });
         if (result.success) {
@@ -70,7 +46,7 @@ export default function ContactsScreen() {
         setIsRefreshing(false);
       }
     },
-    [contactType, searchQuery, showError]
+    [searchQuery, showError]
   );
 
   useFocusEffect(
@@ -100,8 +76,8 @@ export default function ContactsScreen() {
           <Lucide name="chevron-left" size={24} color={COLORS.gray600} />
         </Pressable>
         <View className="flex-1">
-          <Text className="text-xl font-bold text-gray-900">{config.title}</Text>
-          <Text className="text-xs text-gray-500">{contacts.length} {config.subtitle}</Text>
+          <Text className="text-xl font-bold text-gray-900">Contacts</Text>
+          <Text className="text-xs text-gray-500">{contacts.length} contacts</Text>
         </View>
       </View>
 
@@ -132,15 +108,15 @@ export default function ContactsScreen() {
       ) : filteredContacts.length === 0 ? (
         <View style={styles.emptyState} className="mx-4 mt-6 bg-white rounded-2xl p-8 items-center">
           <View style={styles.emptyIconBg}>
-            <Lucide name={config.icon} size={32} color={COLORS.gray400} />
+            <Lucide name="users" size={32} color={COLORS.gray400} />
           </View>
           <Text className="text-base font-medium text-gray-700 mt-4">
-            {searchQuery ? `No ${config.subtitle} found` : config.emptyText}
+            {searchQuery ? "No contacts found" : "No contacts yet"}
           </Text>
           <Text className="text-sm text-gray-500 text-center mt-1">
             {searchQuery
               ? "Try a different search term"
-              : config.emptySubtext}
+              : "Contacts are automatically created when you add transactions"}
           </Text>
         </View>
       ) : (
@@ -150,7 +126,6 @@ export default function ContactsScreen() {
           renderItem={({ item }) => (
             <ContactRow
               contact={item}
-              contactType={contactType}
               onPress={() => router.push(buildRoute.contactDetail(item.id))}
             />
           )}
@@ -171,16 +146,13 @@ export default function ContactsScreen() {
 
 function ContactRow({
   contact,
-  contactType,
   onPress,
 }: {
   contact: IContact;
-  contactType: "customer" | "supplier";
   onPress: () => void;
 }) {
-  const isSupplier = contactType === "supplier";
-  const iconName = isSupplier ? "store" : "user";
-  const amount = isSupplier ? contact.totalSpent : contact.totalReceived;
+  // Show total amount (spent or received, whichever is higher)
+  const totalAmount = Math.max(contact.totalSpent || 0, contact.totalReceived || 0);
 
   return (
     <Pressable
@@ -190,7 +162,7 @@ function ContactRow({
     >
       <View className="flex-row items-center">
         <View style={styles.contactIcon}>
-          <Lucide name={iconName} size={18} color={COLORS.primary} />
+          <Lucide name="user" size={18} color={COLORS.primary} />
         </View>
         <View className="flex-1 ml-3">
           <Text className="text-base font-semibold text-gray-900">{contact.name}</Text>
@@ -198,12 +170,9 @@ function ContactRow({
             {contact.transactionCount} transactions
           </Text>
         </View>
-        {amount > 0 && (
-          <Text
-            className="text-sm font-semibold"
-            style={{ color: isSupplier ? COLORS.error : COLORS.success }}
-          >
-            {formatAmount(amount)}
+        {totalAmount > 0 && (
+          <Text className="text-sm font-semibold text-gray-700">
+            {formatAmount(totalAmount)}
           </Text>
         )}
         <Lucide name="chevron-right" size={16} color={COLORS.gray400} className="ml-2" />

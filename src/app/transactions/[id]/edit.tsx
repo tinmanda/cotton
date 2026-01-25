@@ -178,18 +178,14 @@ export default function EditTransactionScreen() {
   // Filter categories by type
   const filteredCategories = categories.filter((c) => c.type === type);
 
-  // Filter contacts by type (suppliers for expense, customers for income)
-  const relevantContactType = type === "expense" ? "supplier" : "customer";
-  const filteredContacts = contacts.filter((c) => c.types?.includes(relevantContactType));
-
   // Recently used contacts (top 5 by transaction count)
-  const recentlyUsedContacts = [...filteredContacts]
+  const recentlyUsedContacts = [...contacts]
     .sort((a, b) => (b.transactionCount || 0) - (a.transactionCount || 0))
     .slice(0, 5);
 
   // All contacts sorted alphabetically (excluding recently used)
   const recentlyUsedIds = new Set(recentlyUsedContacts.map((c) => c.id));
-  const allOtherContacts = filteredContacts
+  const allOtherContacts = contacts
     .filter((c) => !recentlyUsedIds.has(c.id))
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -716,7 +712,7 @@ export default function EditTransactionScreen() {
               )}
 
               {/* Empty State */}
-              {filteredContacts.length === 0 && !showAddContactInput && (
+              {contacts.length === 0 && !showAddContactInput && (
                 <View className="items-center py-8">
                   <Lucide name="users" size={32} color={COLORS.gray300} />
                   <Text className="text-gray-400 mt-2">No contacts yet</Text>

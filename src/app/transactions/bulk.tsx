@@ -14,7 +14,7 @@ import { useAtom } from "jotai";
 import { COLORS, ROUTES } from "@/constants";
 import { bulkTransactionDataAtom } from "@/store/ui/atoms";
 import { FinanceService } from "@/services";
-import { ParsedBulkTransaction, Currency, TransactionType, ContactType } from "@/types";
+import { ParsedBulkTransaction, Currency, TransactionType } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
 function formatAmount(amount: number, currency: Currency): string {
@@ -41,13 +41,7 @@ interface BulkTransactionItem extends ParsedBulkTransaction {
 
 interface NewContact {
   name: string;
-  suggestedType: ContactType;
   transactionCount: number;
-}
-
-// Infer contact type from transaction type
-function inferContactType(transactionType: TransactionType): ContactType {
-  return transactionType === "income" ? "customer" : "supplier";
 }
 
 export default function BulkTransactionsScreen() {
@@ -59,9 +53,6 @@ export default function BulkTransactionsScreen() {
 
   const [transactions, setTransactions] = useState<BulkTransactionItem[]>([]);
   const [isCreating, setIsCreating] = useState(false);
-
-  // Track contact type overrides for new contacts
-  const [contactTypeOverrides, setContactTypeOverrides] = useState<Record<string, ContactType>>({});
 
   // Bulk project selector
   const [bulkProjectId, setBulkProjectId] = useState<string | undefined>();
@@ -129,7 +120,6 @@ export default function BulkTransactionsScreen() {
       } else {
         contactMap.set(t.contactName, {
           name: t.contactName,
-          suggestedType: inferContactType(t.type),
           transactionCount: 1,
         });
       }
@@ -137,19 +127,6 @@ export default function BulkTransactionsScreen() {
 
     return Array.from(contactMap.values());
   }, [transactions]);
-
-  // Get the effective contact type (override or suggested)
-  const getContactType = (contactName: string): ContactType => {
-    if (contactTypeOverrides[contactName]) {
-      return contactTypeOverrides[contactName];
-    }
-    const contact = newContacts.find(c => c.name === contactName);
-    return contact?.suggestedType || "supplier";
-  };
-
-  const setContactType = (contactName: string, type: ContactType) => {
-    setContactTypeOverrides(prev => ({ ...prev, [contactName]: type }));
-  };
 
   const toggleTransaction = (index: number) => {
     setTransactions((prev) =>
@@ -188,7 +165,6 @@ export default function BulkTransactionsScreen() {
           type: t.type,
           date: t.date,
           contactName: t.contactName,
-          contactType: !t.existingContactId ? getContactType(t.contactName) : undefined,
           categoryId: t.categoryId,
           projectId: t.projectId,
           description: t.description,
@@ -287,54 +263,28 @@ export default function BulkTransactionsScreen() {
             <View className="flex-row items-center mb-3">
               <Lucide name="user-plus" size={16} color={COLORS.primary} />
               <Text className="text-sm font-semibold text-gray-900 ml-2">
-                New Contacts Detected
+                New Contacts
               </Text>
               <View style={styles.badge} className="ml-2 px-2 py-0.5 rounded-full">
                 <Text className="text-xs text-primary font-medium">{newContacts.length}</Text>
               </View>
             </View>
             <Text className="text-xs text-gray-500 mb-3">
-              These contacts will be created. Tap to change their type.
+              These contacts will be created automatically.
             </Text>
-            {newContacts.map((contact) => {
-              const currentType = getContactType(contact.name);
-              return (
-                <View
-                  key={contact.name}
-                  className="flex-row items-center justify-between py-2 border-t border-gray-100"
-                >
-                  <View className="flex-1 mr-3">
-                    <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
-                      {contact.name}
-                    </Text>
-                    <Text className="text-xs text-gray-500">
-                      {contact.transactionCount} transaction{contact.transactionCount !== 1 ? "s" : ""}
-                    </Text>
-                  </View>
-                  <View className="flex-row gap-1">
-                    {(["customer", "supplier", "employee"] as ContactType[]).map((type) => (
-                      <Pressable
-                        key={type}
-                        onPress={() => setContactType(contact.name, type)}
-                        style={[
-                          styles.typeChip,
-                          currentType === type && styles.typeChipActive,
-                        ]}
-                        className="px-2.5 py-1.5 rounded-lg"
-                      >
-                        <Text
-                          className={`text-xs font-medium capitalize ${
-                            currentType === type ? "text-white" : "text-gray-600"
-                          }`}
-                        >
-                          {type}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-              );
-            })}
+            {newContacts.map((contact) => (
+              <View
+                key={contact.name}
+                className="flex-row items-center justify-between py-2 border-t border-gray-100"
+              >
+                <Text className="text-sm font-medium text-gray-900 flex-1" numberOfLines={1}>
+                  {contact.name}
+                </Text>
+                <Text className="text-xs text-gray-500 ml-2">
+                  {contact.transactionCount} txn{contact.transactionCount !== 1 ? "s" : ""}
+                </Text>
+              </View>
+            ))}
           </View>
         )}
 
@@ -589,12 +539,6 @@ const styles = StyleSheet.create({
   },
   badge: {
     backgroundColor: `${COLORS.primary}15`,
-  },
-  typeChip: {
-    backgroundColor: COLORS.gray100,
-  },
-  typeChipActive: {
-    backgroundColor: COLORS.primary,
   },
   projectChip: {
     backgroundColor: COLORS.gray100,

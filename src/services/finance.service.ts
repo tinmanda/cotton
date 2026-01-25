@@ -17,8 +17,6 @@ import {
   TransactionFilters,
   ProjectType,
   ProjectStatus,
-  ContactType,
-  EmployeeStatus,
   Currency,
   TransactionType,
   IAllocation,
@@ -153,7 +151,7 @@ export class FinanceService {
   }
 
   // ============================================
-  // Contacts (Unified: Customers, Suppliers, Employees)
+  // Contacts
   // ============================================
 
   /**
@@ -161,7 +159,6 @@ export class FinanceService {
    */
   static async createContact(params: {
     name: string;
-    types: ContactType[];
     aliases?: string[];
     email?: string;
     phone?: string;
@@ -169,10 +166,6 @@ export class FinanceService {
     website?: string;
     notes?: string;
     defaultCategoryId?: string;
-    // Employee-specific fields
-    role?: string;
-    monthlySalary?: number;
-    salaryCurrency?: Currency;
     projectId?: string;
   }): Promise<ApiResponse<IContact>> {
     try {
@@ -194,9 +187,7 @@ export class FinanceService {
    * Get contacts with optional filters
    */
   static async getContacts(params?: {
-    type?: ContactType;
     projectId?: string;
-    employeeStatus?: EmployeeStatus;
     search?: string;
     limit?: number;
   }): Promise<ApiResponse<IContact[]>> {
@@ -223,7 +214,6 @@ export class FinanceService {
   static async updateContact(params: {
     contactId: string;
     name?: string;
-    types?: ContactType[];
     aliases?: string[];
     email?: string;
     phone?: string;
@@ -231,11 +221,6 @@ export class FinanceService {
     website?: string;
     notes?: string;
     defaultCategoryId?: string | null;
-    // Employee-specific fields
-    role?: string;
-    monthlySalary?: number;
-    salaryCurrency?: Currency;
-    employeeStatus?: EmployeeStatus;
     projectId?: string | null;
   }): Promise<ApiResponse<IContact>> {
     try {
