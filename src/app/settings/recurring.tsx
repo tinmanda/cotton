@@ -367,11 +367,8 @@ export default function RecurringTransactionsScreen() {
             No recurring {activeTab === "expense" ? "expenses" : "income"} yet
           </Text>
           <Text className="text-sm text-gray-500 text-center mt-1">
-            Add regular {activeTab === "expense" ? "bills and subscriptions" : "retainers and revenue"} to track estimates
+            Tap + to add {activeTab === "expense" ? "bills and subscriptions" : "retainers and revenue"}
           </Text>
-          <Pressable onPress={handleAddNew} style={styles.emptyButton} className="mt-4 px-6 py-3 rounded-xl">
-            <Text className="text-white font-semibold">Add {activeTab === "expense" ? "Expense" : "Income"}</Text>
-          </Pressable>
         </View>
       ) : (
         <FlatList
@@ -464,12 +461,12 @@ function RecurringItemRow({
             />
           </View>
           <View className="flex-1 ml-3">
-            <View className="flex-row items-center justify-between">
-              <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
+            <View className="flex-row items-center justify-between gap-3">
+              <Text className="text-base font-semibold text-gray-900 flex-1 flex-shrink" numberOfLines={1}>
                 {item.name}
               </Text>
               <Text
-                className="text-base font-bold"
+                className="text-base font-bold flex-shrink-0"
                 style={{ color: isExpense ? COLORS.error : COLORS.success }}
               >
                 {isExpense ? "-" : "+"}
@@ -1308,9 +1305,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray100,
     alignItems: "center",
     justifyContent: "center",
-  },
-  emptyButton: {
-    backgroundColor: COLORS.primary,
   },
   itemCard: {
     shadowColor: COLORS.shadow,
