@@ -2955,6 +2955,140 @@ Parse.Cloud.define("createTransactionFromRecurring", async (request) => {
   };
 });
 
+/**
+ * Suggest recurring transactions by analyzing transaction history
+ * Uses AI to identify patterns in contacts, amounts, and dates
+ */
+Parse.Cloud.define("suggestRecurringTransactions", async (request) => {
+  const user = requireUser(request);
+
+  // Fetch transactions from the last 6 months
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+  const transactionQuery = new Parse.Query("Transaction");
+  transactionQuery.equalTo("user", user);
+  transactionQuery.greaterThanOrEqualTo("date", sixMonthsAgo);
+  transactionQuery.descending("date");
+  transactionQuery.limit(500); // Get up to 500 transactions
+  transactionQuery.include(["category", "project", "contact"]);
+
+  const transactions = await transactionQuery.find({ useMasterKey: true });
+
+  if (transactions.length < 3) {
+    return { suggestions: [], message: "Not enough transaction history to analyze" };
+  }
+
+  // Prepare transaction data for AI analysis
+  const txData = transactions.map((t) => ({
+    date: t.get("date").toISOString().split("T")[0],
+    amount: t.get("amount"),
+    currency: t.get("currency"),
+    type: t.get("type"),
+    contactName: t.get("contactName") || "Unknown",
+    categoryName: t.get("category")?.get("name") || null,
+    categoryId: t.get("category")?.id || null,
+    projectName: t.get("project")?.get("name") || null,
+    projectId: t.get("project")?.id || null,
+    description: t.get("description") || null,
+  }));
+
+  // Fetch existing recurring transactions to avoid duplicates
+  const existingRtQuery = new Parse.Query("RecurringTransaction");
+  existingRtQuery.equalTo("user", user);
+  const existingRts = await existingRtQuery.find({ useMasterKey: true });
+  const existingNames = existingRts.map((rt) => rt.get("name").toLowerCase());
+  const existingContacts = existingRts.map((rt) => (rt.get("contactName") || "").toLowerCase());
+
+  const systemPrompt = `You are a financial analyst helping identify recurring transactions from transaction history.
+
+Analyze the transaction data and identify patterns that suggest recurring expenses or income:
+- Same or similar contact name appearing regularly
+- Similar amounts (within 10% variance)
+- Regular intervals (weekly, monthly, quarterly, yearly)
+
+For each pattern you identify, suggest a recurring transaction.
+
+IMPORTANT:
+- Only suggest items that appear at least 2+ times with a clear pattern
+- Prefer the most common amount if there's slight variation
+- Infer a good name for the recurring item (e.g., "AWS Subscription" not just "AWS")
+- Identify the frequency based on the dates (weekly ~7 days, monthly ~30 days, quarterly ~90 days, yearly ~365 days)
+
+Return a JSON object with this structure:
+{
+  "suggestions": [
+    {
+      "name": "Descriptive name for recurring item",
+      "amount": 1000,
+      "currency": "INR",
+      "type": "expense" or "income",
+      "frequency": "weekly" | "monthly" | "quarterly" | "yearly",
+      "contactName": "Contact name",
+      "categoryId": "category id if available",
+      "categoryName": "category name if available",
+      "projectId": "project id if available",
+      "projectName": "project name if available",
+      "confidence": 0.9,
+      "reason": "Brief explanation of why this was identified"
+    }
+  ]
+}
+
+If no clear patterns are found, return: { "suggestions": [] }`;
+
+  const userMessage = `Here are the transactions from the last 6 months:
+
+${JSON.stringify(txData, null, 2)}
+
+Already existing recurring items (avoid duplicates): ${existingNames.join(", ") || "none"}
+
+Please analyze and suggest recurring transactions.`;
+
+  try {
+    const aiResponse = await callAnthropic(systemPrompt, userMessage);
+
+    // Extract JSON from response
+    let parsed;
+    try {
+      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("No JSON found in response");
+      }
+    } catch (parseError) {
+      console.error("[suggestRecurringTransactions] Failed to parse AI response:", parseError.message);
+      return { suggestions: [], message: "Failed to analyze transactions" };
+    }
+
+    // Filter out suggestions that match existing recurring transactions
+    const filteredSuggestions = (parsed.suggestions || []).filter((s) => {
+      const nameLower = s.name.toLowerCase();
+      const contactLower = (s.contactName || "").toLowerCase();
+
+      // Skip if name or contact already exists
+      if (existingNames.some((n) => nameLower.includes(n) || n.includes(nameLower))) {
+        return false;
+      }
+      if (contactLower && existingContacts.some((c) => contactLower.includes(c) || c.includes(contactLower))) {
+        return false;
+      }
+      return true;
+    });
+
+    console.log(`[suggestRecurringTransactions] Found ${filteredSuggestions.length} suggestions`);
+
+    return {
+      suggestions: filteredSuggestions,
+      analyzed: transactions.length,
+    };
+  } catch (error) {
+    console.error("[suggestRecurringTransactions] Error:", error.message);
+    throw new Parse.Error(Parse.Error.SCRIPT_FAILED, "Failed to analyze transactions: " + error.message);
+  }
+});
+
 // ============================================
 // Utility Cloud Functions
 // ============================================

@@ -782,4 +782,37 @@ export class FinanceService {
       return errorResponseFromUnknown(error);
     }
   }
+
+  /**
+   * Suggest recurring transactions based on transaction history
+   */
+  static async suggestRecurringTransactions(): Promise<
+    ApiResponse<{
+      suggestions: Array<{
+        name: string;
+        amount: number;
+        currency: Currency;
+        type: TransactionType;
+        frequency: RecurringFrequency;
+        contactName?: string;
+        categoryId?: string;
+        categoryName?: string;
+        projectId?: string;
+        projectName?: string;
+        confidence: number;
+        reason: string;
+      }>;
+      analyzed: number;
+      message?: string;
+    }>
+  > {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.SUGGEST_RECURRING_TRANSACTIONS
+      );
+      return successResponse(result);
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
 }

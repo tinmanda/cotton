@@ -21,10 +21,26 @@ import {
   IRecurringTransaction,
   ICategory,
   IProject,
+  IContact,
   TransactionType,
   RecurringFrequency,
   Currency,
 } from "@/types";
+
+interface SuggestedRecurring {
+  name: string;
+  amount: number;
+  currency: Currency;
+  type: TransactionType;
+  frequency: RecurringFrequency;
+  contactName?: string;
+  categoryId?: string;
+  categoryName?: string;
+  projectId?: string;
+  projectName?: string;
+  confidence: number;
+  reason: string;
+}
 import { useToast } from "@/hooks/useToast";
 
 function formatAmount(amount: number, currency: string = "INR"): string {
@@ -77,6 +93,7 @@ export default function RecurringTransactionsScreen() {
   const [recurringTransactions, setRecurringTransactions] = useState<IRecurringTransaction[]>([]);
   const [categories, setCategories] = useState<ICategory[]>([]);
   const [projects, setProjects] = useState<IProject[]>([]);
+  const [contacts, setContacts] = useState<IContact[]>([]);
 
   // Modal states
   const [addEditModalVisible, setAddEditModalVisible] = useState(false);
@@ -84,16 +101,22 @@ export default function RecurringTransactionsScreen() {
   const [createTransactionModalVisible, setCreateTransactionModalVisible] = useState(false);
   const [selectedRecurring, setSelectedRecurring] = useState<IRecurringTransaction | null>(null);
 
+  // Suggestions states
+  const [suggestionsModalVisible, setSuggestionsModalVisible] = useState(false);
+  const [suggestions, setSuggestions] = useState<SuggestedRecurring[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+
   // Tab state (expenses vs income)
   const [activeTab, setActiveTab] = useState<TransactionType>("expense");
 
   const loadData = useCallback(async (showLoader = true) => {
     if (showLoader) setIsLoading(true);
     try {
-      const [rtResult, catResult, projResult] = await Promise.all([
+      const [rtResult, catResult, projResult, contactsResult] = await Promise.all([
         FinanceService.getRecurringTransactions(),
         FinanceService.getCategories(),
         FinanceService.getProjects(),
+        FinanceService.getContacts(),
       ]);
 
       if (rtResult.success) {
@@ -108,6 +131,10 @@ export default function RecurringTransactionsScreen() {
 
       if (projResult.success) {
         setProjects(projResult.data);
+      }
+
+      if (contactsResult.success) {
+        setContacts(contactsResult.data);
       }
     } finally {
       setIsLoading(false);
@@ -194,11 +221,58 @@ export default function RecurringTransactionsScreen() {
     showSuccess("Transaction recorded");
   };
 
+  const handleSuggest = async () => {
+    setIsLoadingSuggestions(true);
+    setSuggestionsModalVisible(true);
+    try {
+      const result = await FinanceService.suggestRecurringTransactions();
+      if (result.success) {
+        setSuggestions(result.data.suggestions || []);
+        if (result.data.suggestions?.length === 0) {
+          showError(result.data.message || "No patterns found in your transactions");
+        }
+      } else {
+        showError(result.error.message);
+        setSuggestionsModalVisible(false);
+      }
+    } catch {
+      showError("Failed to analyze transactions");
+      setSuggestionsModalVisible(false);
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
+  };
+
+  const handleAddSuggestion = async (suggestion: SuggestedRecurring) => {
+    try {
+      const result = await FinanceService.createRecurringTransaction({
+        name: suggestion.name,
+        amount: suggestion.amount,
+        currency: suggestion.currency,
+        type: suggestion.type,
+        frequency: suggestion.frequency,
+        contactName: suggestion.contactName,
+        categoryId: suggestion.categoryId,
+        projectId: suggestion.projectId,
+      });
+      if (result.success) {
+        showSuccess(`Added: ${suggestion.name}`);
+        // Remove from suggestions
+        setSuggestions((prev) => prev.filter((s) => s.name !== suggestion.name));
+        loadData(false);
+      } else {
+        showError(result.error.message);
+      }
+    } catch {
+      showError("Failed to add recurring item");
+    }
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
       {/* Header */}
       <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center justify-between">
-        <View className="flex-row items-center">
+        <View className="flex-row items-center flex-1">
           <Pressable
             onPress={() => router.back()}
             className="mr-3"
@@ -213,9 +287,19 @@ export default function RecurringTransactionsScreen() {
             </Text>
           </View>
         </View>
-        <Pressable onPress={handleAddNew} style={styles.addButton} className="rounded-full">
-          <Lucide name="plus" size={20} color={COLORS.white} />
-        </Pressable>
+        <View className="flex-row items-center gap-2">
+          <Pressable
+            onPress={handleSuggest}
+            style={styles.suggestButton}
+            className="flex-row items-center px-3 py-2 rounded-full"
+          >
+            <Lucide name="sparkles" size={16} color={COLORS.primary} />
+            <Text className="text-sm font-semibold text-primary ml-1">Suggest</Text>
+          </Pressable>
+          <Pressable onPress={handleAddNew} style={styles.addButton} className="rounded-full">
+            <Lucide name="plus" size={20} color={COLORS.white} />
+          </Pressable>
+        </View>
       </View>
 
       {/* Tabs */}
@@ -315,6 +399,7 @@ export default function RecurringTransactionsScreen() {
         defaultType={activeTab}
         categories={categories}
         projects={projects}
+        contacts={contacts}
         onClose={() => {
           setAddEditModalVisible(false);
           setEditingItem(null);
@@ -334,6 +419,18 @@ export default function RecurringTransactionsScreen() {
           onCreated={handleTransactionCreated}
         />
       )}
+
+      {/* Suggestions Modal */}
+      <SuggestionsModal
+        visible={suggestionsModalVisible}
+        suggestions={suggestions}
+        isLoading={isLoadingSuggestions}
+        onClose={() => {
+          setSuggestionsModalVisible(false);
+          setSuggestions([]);
+        }}
+        onAdd={handleAddSuggestion}
+      />
     </SafeAreaView>
   );
 }
@@ -447,6 +544,7 @@ function AddEditRecurringModal({
   defaultType,
   categories,
   projects,
+  contacts,
   onClose,
   onSaved,
 }: {
@@ -455,6 +553,7 @@ function AddEditRecurringModal({
   defaultType: TransactionType;
   categories: ICategory[];
   projects: IProject[];
+  contacts: IContact[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -464,6 +563,7 @@ function AddEditRecurringModal({
   const [currency, setCurrency] = useState<Currency>("INR");
   const [type, setType] = useState<TransactionType>(defaultType);
   const [frequency, setFrequency] = useState<RecurringFrequency>("monthly");
+  const [contactId, setContactId] = useState<string | undefined>();
   const [contactName, setContactName] = useState("");
   const [categoryId, setCategoryId] = useState<string | undefined>();
   const [projectId, setProjectId] = useState<string | undefined>();
@@ -482,6 +582,7 @@ function AddEditRecurringModal({
       setCurrency(editingItem.currency);
       setType(editingItem.type);
       setFrequency(editingItem.frequency);
+      setContactId(editingItem.contactId);
       setContactName(editingItem.contactName || "");
       setCategoryId(editingItem.categoryId);
       setProjectId(editingItem.projectId);
@@ -490,6 +591,7 @@ function AddEditRecurringModal({
     } else {
       setName("");
       setAmount("");
+      setContactId(undefined);
       setCurrency("INR");
       setType(defaultType);
       setFrequency("monthly");
@@ -711,18 +813,43 @@ function AddEditRecurringModal({
           </View>
 
           {/* Contact */}
-          <View className="mb-5">
-            <Text className="text-sm font-medium text-gray-500 mb-2">Contact (optional)</Text>
-            <View className="bg-gray-100 rounded-xl px-4 py-4">
-              <TextInput
-                value={contactName}
-                onChangeText={setContactName}
-                placeholder="e.g., AWS, Landlord, Client Name"
-                placeholderTextColor={COLORS.gray400}
-                style={{ fontSize: 16, color: COLORS.gray900 }}
-              />
+          {contacts.length > 0 && (
+            <View className="mb-5">
+              <Text className="text-sm font-medium text-gray-500 mb-2">Contact (optional)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View className="flex-row gap-2">
+                  <Pressable
+                    onPress={() => {
+                      setContactId(undefined);
+                      setContactName("");
+                    }}
+                    style={[styles.categoryChip, !contactId && styles.categoryChipActive]}
+                    className="px-3 py-2 rounded-lg"
+                  >
+                    <Text className={`text-sm ${!contactId ? "text-primary font-semibold" : "text-gray-600"}`}>
+                      None
+                    </Text>
+                  </Pressable>
+                  {contacts.map((contact) => (
+                    <Pressable
+                      key={contact.id}
+                      onPress={() => {
+                        setContactId(contact.id);
+                        setContactName(contact.name);
+                      }}
+                      style={[styles.categoryChip, contactId === contact.id && styles.categoryChipActive]}
+                      className="px-3 py-2 rounded-lg flex-row items-center"
+                    >
+                      <Lucide name="user" size={12} color={contactId === contact.id ? COLORS.primary : COLORS.gray500} />
+                      <Text className={`text-sm ml-1.5 ${contactId === contact.id ? "text-primary font-semibold" : "text-gray-600"}`}>
+                        {contact.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
             </View>
-          </View>
+          )}
 
           {/* Category */}
           {filteredCategories.length > 0 && (
@@ -1003,6 +1130,150 @@ function CreateTransactionModal({
   );
 }
 
+function SuggestionsModal({
+  visible,
+  suggestions,
+  isLoading,
+  onClose,
+  onAdd,
+}: {
+  visible: boolean;
+  suggestions: SuggestedRecurring[];
+  isLoading: boolean;
+  onClose: () => void;
+  onAdd: (suggestion: SuggestedRecurring) => void;
+}) {
+  const [addingIndex, setAddingIndex] = useState<number | null>(null);
+
+  const handleAdd = async (suggestion: SuggestedRecurring, index: number) => {
+    setAddingIndex(index);
+    await onAdd(suggestion);
+    setAddingIndex(null);
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView className="flex-1 bg-white">
+        <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-100">
+          <View className="w-16" />
+          <Text className="text-lg font-semibold text-gray-900">Suggested Recurring</Text>
+          <Pressable onPress={onClose} className="px-2 py-1">
+            <Text className="text-base text-gray-600">Done</Text>
+          </Pressable>
+        </View>
+
+        {isLoading ? (
+          <View className="flex-1 items-center justify-center">
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text className="text-sm text-gray-500 mt-4">Analyzing your transactions...</Text>
+            <Text className="text-xs text-gray-400 mt-1">This may take a moment</Text>
+          </View>
+        ) : suggestions.length === 0 ? (
+          <View className="flex-1 items-center justify-center px-8">
+            <View style={styles.emptyIconBg}>
+              <Lucide name="search-x" size={32} color={COLORS.gray400} />
+            </View>
+            <Text className="text-base font-medium text-gray-700 mt-4 text-center">
+              No patterns found
+            </Text>
+            <Text className="text-sm text-gray-500 text-center mt-1">
+              We couldn't identify any recurring transactions from your history yet. Add more transactions and try again.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
+            <Text className="text-sm text-gray-500 mb-4">
+              Based on your transaction history, here are some potential recurring items:
+            </Text>
+            {suggestions.map((suggestion, index) => {
+              const isExpense = suggestion.type === "expense";
+              const isAdding = addingIndex === index;
+
+              return (
+                <View
+                  key={`${suggestion.name}-${index}`}
+                  style={styles.suggestionCard}
+                  className="bg-white rounded-xl mb-3 overflow-hidden border border-gray-100"
+                >
+                  <View className="p-4">
+                    <View className="flex-row items-start justify-between">
+                      <View className="flex-1">
+                        <Text className="text-base font-semibold text-gray-900">{suggestion.name}</Text>
+                        <View className="flex-row items-center mt-1">
+                          <Text className="text-xs text-gray-500">{formatFrequency(suggestion.frequency)}</Text>
+                          {suggestion.contactName && (
+                            <>
+                              <Text className="text-xs text-gray-400 mx-1">•</Text>
+                              <Text className="text-xs text-gray-500">{suggestion.contactName}</Text>
+                            </>
+                          )}
+                        </View>
+                      </View>
+                      <Text
+                        className="text-base font-bold"
+                        style={{ color: isExpense ? COLORS.error : COLORS.success }}
+                      >
+                        {isExpense ? "-" : "+"}
+                        {formatAmount(suggestion.amount, suggestion.currency)}
+                      </Text>
+                    </View>
+
+                    <Text className="text-xs text-gray-400 mt-2 italic">{suggestion.reason}</Text>
+
+                    <View className="flex-row items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                      <View className="flex-row items-center">
+                        {suggestion.categoryName && (
+                          <View className="bg-gray-100 px-2 py-1 rounded-full mr-2">
+                            <Text className="text-xs text-gray-600">{suggestion.categoryName}</Text>
+                          </View>
+                        )}
+                        {suggestion.projectName && (
+                          <View className="bg-gray-100 px-2 py-1 rounded-full">
+                            <Text className="text-xs text-gray-600">{suggestion.projectName}</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View className="flex-row items-center">
+                        <View className="bg-blue-100 px-2 py-1 rounded-full">
+                          <Text className="text-xs text-blue-700">{Math.round(suggestion.confidence * 100)}% match</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+
+                  <Pressable
+                    onPress={() => handleAdd(suggestion, index)}
+                    disabled={isAdding}
+                    style={[
+                      styles.addSuggestionButton,
+                      { backgroundColor: isExpense ? `${COLORS.error}08` : `${COLORS.success}08` },
+                    ]}
+                    className="flex-row items-center justify-center py-3 border-t border-gray-100"
+                  >
+                    {isAdding ? (
+                      <ActivityIndicator size="small" color={isExpense ? COLORS.error : COLORS.success} />
+                    ) : (
+                      <>
+                        <Lucide name="plus" size={16} color={isExpense ? COLORS.error : COLORS.success} />
+                        <Text
+                          className="text-sm font-semibold ml-2"
+                          style={{ color: isExpense ? COLORS.error : COLORS.success }}
+                        >
+                          Add to Recurring
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                </View>
+              );
+            })}
+          </ScrollView>
+        )}
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 const styles = StyleSheet.create({
   addButton: {
     width: 40,
@@ -1010,6 +1281,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     alignItems: "center",
     justifyContent: "center",
+  },
+  suggestButton: {
+    backgroundColor: `${COLORS.primary}15`,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}30`,
   },
   tab: {},
   tabActive: {
@@ -1101,4 +1377,12 @@ const styles = StyleSheet.create({
   summaryCard: {
     borderLeftWidth: 4,
   },
+  suggestionCard: {
+    shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  addSuggestionButton: {},
 });

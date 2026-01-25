@@ -50,6 +50,7 @@ export const CLOUD_FUNCTIONS = {
   UPDATE_RECURRING_TRANSACTION: "updateRecurringTransaction",
   DELETE_RECURRING_TRANSACTION: "deleteRecurringTransaction",
   CREATE_TRANSACTION_FROM_RECURRING: "createTransactionFromRecurring",
+  SUGGEST_RECURRING_TRANSACTIONS: "suggestRecurringTransactions",
 
   // Utility
   HELLO: "hello",
