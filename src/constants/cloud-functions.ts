@@ -44,6 +44,13 @@ export const CLOUD_FUNCTIONS = {
   MARK_TRANSACTION_REVIEWED: "markTransactionReviewed",
   GET_FLAGGED_COUNT: "getFlaggedCount",
 
+  // Recurring Transactions
+  CREATE_RECURRING_TRANSACTION: "createRecurringTransaction",
+  GET_RECURRING_TRANSACTIONS: "getRecurringTransactions",
+  UPDATE_RECURRING_TRANSACTION: "updateRecurringTransaction",
+  DELETE_RECURRING_TRANSACTION: "deleteRecurringTransaction",
+  CREATE_TRANSACTION_FROM_RECURRING: "createTransactionFromRecurring",
+
   // Utility
   HELLO: "hello",
 } as const;

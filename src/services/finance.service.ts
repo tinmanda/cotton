@@ -5,6 +5,7 @@ import {
   ICategory,
   IContact,
   ITransaction,
+  IRecurringTransaction,
   IDashboardSummary,
   IProjectSummary,
   ParseTransactionResponse,
@@ -19,6 +20,7 @@ import {
   ProjectStatus,
   Currency,
   TransactionType,
+  RecurringFrequency,
   IAllocation,
   successResponse,
   errorResponseFromUnknown,
@@ -612,6 +614,170 @@ export class FinanceService {
     try {
       const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.GET_FLAGGED_COUNT);
       return successResponse(result);
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  // ============================================
+  // Recurring Transactions
+  // ============================================
+
+  /**
+   * Create a recurring transaction template
+   */
+  static async createRecurringTransaction(params: {
+    name: string;
+    amount: number;
+    currency?: Currency;
+    type: TransactionType;
+    frequency: RecurringFrequency;
+    contactName?: string;
+    categoryId?: string;
+    projectId?: string;
+    description?: string;
+    notes?: string;
+  }): Promise<ApiResponse<IRecurringTransaction>> {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.CREATE_RECURRING_TRANSACTION,
+        params
+      );
+      return successResponse({
+        ...result,
+        lastCreatedAt: result.lastCreatedAt ? new Date(result.lastCreatedAt) : undefined,
+        nextDueDate: result.nextDueDate ? new Date(result.nextDueDate) : undefined,
+        createdAt: new Date(result.createdAt),
+        updatedAt: new Date(result.updatedAt),
+      });
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
+   * Get recurring transactions with optional filters
+   */
+  static async getRecurringTransactions(params?: {
+    type?: TransactionType;
+    projectId?: string;
+    isActive?: boolean;
+  }): Promise<ApiResponse<IRecurringTransaction[]>> {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.GET_RECURRING_TRANSACTIONS,
+        params || {}
+      );
+      return successResponse(
+        result.map((rt: IRecurringTransaction) => ({
+          ...rt,
+          lastCreatedAt: rt.lastCreatedAt ? new Date(rt.lastCreatedAt) : undefined,
+          nextDueDate: rt.nextDueDate ? new Date(rt.nextDueDate) : undefined,
+          createdAt: new Date(rt.createdAt),
+          updatedAt: new Date(rt.updatedAt),
+        }))
+      );
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
+   * Update a recurring transaction
+   */
+  static async updateRecurringTransaction(params: {
+    recurringTransactionId: string;
+    name?: string;
+    amount?: number;
+    currency?: Currency;
+    type?: TransactionType;
+    frequency?: RecurringFrequency;
+    contactName?: string | null;
+    categoryId?: string | null;
+    projectId?: string | null;
+    description?: string | null;
+    notes?: string | null;
+    isActive?: boolean;
+  }): Promise<ApiResponse<IRecurringTransaction>> {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.UPDATE_RECURRING_TRANSACTION,
+        params
+      );
+      return successResponse({
+        ...result,
+        lastCreatedAt: result.lastCreatedAt ? new Date(result.lastCreatedAt) : undefined,
+        nextDueDate: result.nextDueDate ? new Date(result.nextDueDate) : undefined,
+        createdAt: new Date(result.createdAt),
+        updatedAt: new Date(result.updatedAt),
+      });
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
+   * Delete a recurring transaction
+   */
+  static async deleteRecurringTransaction(
+    recurringTransactionId: string
+  ): Promise<ApiResponse<{ success: boolean; deletedId: string }>> {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.DELETE_RECURRING_TRANSACTION,
+        { recurringTransactionId }
+      );
+      return successResponse(result);
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
+   * Create an actual transaction from a recurring transaction template
+   */
+  static async createTransactionFromRecurring(params: {
+    recurringTransactionId: string;
+    date?: string;
+    amount?: number;
+    notes?: string;
+  }): Promise<
+    ApiResponse<{
+      transaction: {
+        id: string;
+        amount: number;
+        currency: Currency;
+        type: TransactionType;
+        date: Date;
+        contactName?: string;
+        categoryName?: string;
+        projectName?: string;
+      };
+      recurringTransaction: IRecurringTransaction;
+    }>
+  > {
+    try {
+      const result = await Parse.Cloud.run(
+        CLOUD_FUNCTIONS.CREATE_TRANSACTION_FROM_RECURRING,
+        params
+      );
+      return successResponse({
+        transaction: {
+          ...result.transaction,
+          date: new Date(result.transaction.date),
+        },
+        recurringTransaction: {
+          ...result.recurringTransaction,
+          lastCreatedAt: result.recurringTransaction.lastCreatedAt
+            ? new Date(result.recurringTransaction.lastCreatedAt)
+            : undefined,
+          nextDueDate: result.recurringTransaction.nextDueDate
+            ? new Date(result.recurringTransaction.nextDueDate)
+            : undefined,
+          createdAt: new Date(result.recurringTransaction.createdAt),
+          updatedAt: new Date(result.recurringTransaction.updatedAt),
+        },
+      });
     } catch (error) {
       return errorResponseFromUnknown(error);
     }

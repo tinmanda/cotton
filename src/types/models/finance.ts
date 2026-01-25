@@ -13,6 +13,7 @@ export type ProjectStatus = "active" | "paused" | "closed";
 export type ProjectType = "service" | "product" | "investment" | "other";
 export type RawInputStatus = "pending" | "processed" | "failed";
 export type RawInputSource = "sms" | "email" | "manual" | "voice";
+export type RecurringFrequency = "weekly" | "monthly" | "quarterly" | "yearly";
 
 // ============================================
 // Core Models
@@ -107,6 +108,32 @@ export interface ITransaction {
   reviewReason?: "low_confidence" | "potential_duplicate" | "incomplete"; // Why flagged
   potentialDuplicateIds?: string[]; // IDs of similar transactions
   missingFields?: string[]; // Fields that are missing (for incomplete transactions)
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * RecurringTransaction - Template for regular expenses/income
+ * Used for budgeting estimates and quick transaction creation
+ */
+export interface IRecurringTransaction {
+  id: string;
+  name: string; // e.g., "Office Rent", "AWS Subscription", "Monthly Retainer"
+  amount: number;
+  currency: Currency;
+  type: TransactionType; // expense or income
+  frequency: RecurringFrequency;
+  contactId?: string;
+  contactName?: string; // Denormalized for display
+  categoryId?: string;
+  categoryName?: string; // Denormalized for display
+  projectId?: string;
+  projectName?: string; // Denormalized for display
+  description?: string;
+  notes?: string;
+  isActive: boolean; // Can be paused
+  lastCreatedAt?: Date; // When last transaction was created from this
+  nextDueDate?: Date; // Calculated based on frequency and lastCreatedAt
   createdAt: Date;
   updatedAt: Date;
 }

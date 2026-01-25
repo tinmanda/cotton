@@ -379,6 +379,58 @@ function setUserACL(object, user) {
 }
 
 /**
+ * Transform RecurringTransaction Parse object to plain object
+ */
+function transformRecurringTransaction(rt) {
+  return {
+    id: rt.id,
+    name: rt.get("name"),
+    amount: rt.get("amount"),
+    currency: rt.get("currency"),
+    type: rt.get("type"),
+    frequency: rt.get("frequency"),
+    contactId: rt.get("contact")?.id,
+    contactName: rt.get("contactName"),
+    categoryId: rt.get("category")?.id,
+    categoryName: rt.get("category")?.get("name"),
+    projectId: rt.get("project")?.id,
+    projectName: rt.get("project")?.get("name"),
+    description: rt.get("description"),
+    notes: rt.get("notes"),
+    isActive: rt.get("isActive") !== false, // Default to true
+    lastCreatedAt: rt.get("lastCreatedAt"),
+    nextDueDate: rt.get("nextDueDate"),
+    createdAt: rt.createdAt,
+    updatedAt: rt.updatedAt,
+  };
+}
+
+/**
+ * Calculate next due date based on frequency and last created date
+ */
+function calculateNextDueDate(frequency, lastCreatedAt) {
+  const base = lastCreatedAt ? new Date(lastCreatedAt) : new Date();
+  const next = new Date(base);
+
+  switch (frequency) {
+    case "weekly":
+      next.setDate(next.getDate() + 7);
+      break;
+    case "monthly":
+      next.setMonth(next.getMonth() + 1);
+      break;
+    case "quarterly":
+      next.setMonth(next.getMonth() + 3);
+      break;
+    case "yearly":
+      next.setFullYear(next.getFullYear() + 1);
+      break;
+  }
+
+  return next;
+}
+
+/**
  * Transform Contact Parse object to plain object
  */
 function transformContact(contact) {
@@ -2555,6 +2607,352 @@ Parse.Cloud.define("getFlaggedCount", async (request) => {
   const count = await query.count({ useMasterKey: true });
 
   return { count };
+});
+
+// ============================================
+// Recurring Transaction Cloud Functions
+// ============================================
+
+/**
+ * Create a recurring transaction template
+ */
+Parse.Cloud.define("createRecurringTransaction", async (request) => {
+  const user = requireUser(request);
+  const { name, amount, currency, type, frequency, contactName, categoryId, projectId, description, notes } = request.params;
+
+  // Validate required fields
+  if (!name || name.trim().length < 2) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, "Name must be at least 2 characters");
+  }
+  if (!amount || amount <= 0) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, "Amount must be greater than 0");
+  }
+  if (!type || !["income", "expense"].includes(type)) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, "Type must be income or expense");
+  }
+  if (!frequency || !["weekly", "monthly", "quarterly", "yearly"].includes(frequency)) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, "Invalid frequency");
+  }
+
+  const RecurringTransaction = Parse.Object.extend("RecurringTransaction");
+  const rt = new RecurringTransaction();
+
+  rt.set("user", user);
+  rt.set("name", name.trim());
+  rt.set("amount", amount);
+  rt.set("currency", currency || "INR");
+  rt.set("type", type);
+  rt.set("frequency", frequency);
+  rt.set("isActive", true);
+  rt.set("nextDueDate", calculateNextDueDate(frequency, null));
+
+  // Optional fields
+  if (description) rt.set("description", description.trim());
+  if (notes) rt.set("notes", notes.trim());
+
+  // Handle contact
+  if (contactName) {
+    rt.set("contactName", contactName.trim());
+    // Try to find existing contact
+    const contactQuery = new Parse.Query("Contact");
+    contactQuery.equalTo("user", user);
+    contactQuery.equalTo("name", contactName.trim());
+    const existingContact = await contactQuery.first({ useMasterKey: true });
+    if (existingContact) {
+      rt.set("contact", existingContact);
+    }
+  }
+
+  // Handle category
+  if (categoryId) {
+    const Category = Parse.Object.extend("Category");
+    const category = new Category();
+    category.id = categoryId;
+    rt.set("category", category);
+    // Fetch to get the name
+    await category.fetch({ useMasterKey: true });
+  }
+
+  // Handle project
+  if (projectId) {
+    const Project = Parse.Object.extend("Project");
+    const project = new Project();
+    project.id = projectId;
+    rt.set("project", project);
+    await project.fetch({ useMasterKey: true });
+  }
+
+  setUserACL(rt, user);
+  await rt.save(null, { useMasterKey: true });
+
+  // Fetch with includes for the response
+  const query = new Parse.Query("RecurringTransaction");
+  query.include(["contact", "category", "project"]);
+  const saved = await query.get(rt.id, { useMasterKey: true });
+
+  console.log(`[createRecurringTransaction] Created: ${saved.id} - ${name}`);
+  return transformRecurringTransaction(saved);
+});
+
+/**
+ * Get recurring transactions with optional filters
+ */
+Parse.Cloud.define("getRecurringTransactions", async (request) => {
+  const user = requireUser(request);
+  const { type, projectId, isActive } = request.params || {};
+
+  const query = new Parse.Query("RecurringTransaction");
+  query.equalTo("user", user);
+  query.include(["contact", "category", "project"]);
+  query.descending("createdAt");
+
+  if (type) {
+    query.equalTo("type", type);
+  }
+  if (projectId) {
+    const Project = Parse.Object.extend("Project");
+    const project = new Project();
+    project.id = projectId;
+    query.equalTo("project", project);
+  }
+  if (typeof isActive === "boolean") {
+    query.equalTo("isActive", isActive);
+  }
+
+  const results = await query.find({ useMasterKey: true });
+  return results.map(transformRecurringTransaction);
+});
+
+/**
+ * Update a recurring transaction
+ */
+Parse.Cloud.define("updateRecurringTransaction", async (request) => {
+  const user = requireUser(request);
+  const { recurringTransactionId, name, amount, currency, type, frequency, contactName, categoryId, projectId, description, notes, isActive } = request.params;
+
+  if (!recurringTransactionId) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, "recurringTransactionId is required");
+  }
+
+  const query = new Parse.Query("RecurringTransaction");
+  query.equalTo("user", user);
+  query.include(["contact", "category", "project"]);
+  const rt = await query.get(recurringTransactionId, { useMasterKey: true });
+
+  if (!rt) {
+    throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, "Recurring transaction not found");
+  }
+
+  // Update fields if provided
+  if (name !== undefined) rt.set("name", name.trim());
+  if (amount !== undefined) rt.set("amount", amount);
+  if (currency !== undefined) rt.set("currency", currency);
+  if (type !== undefined) rt.set("type", type);
+  if (frequency !== undefined) {
+    rt.set("frequency", frequency);
+    // Recalculate next due date
+    rt.set("nextDueDate", calculateNextDueDate(frequency, rt.get("lastCreatedAt")));
+  }
+  if (description !== undefined) rt.set("description", description?.trim() || null);
+  if (notes !== undefined) rt.set("notes", notes?.trim() || null);
+  if (typeof isActive === "boolean") rt.set("isActive", isActive);
+
+  // Handle contact update
+  if (contactName !== undefined) {
+    if (contactName) {
+      rt.set("contactName", contactName.trim());
+      const contactQuery = new Parse.Query("Contact");
+      contactQuery.equalTo("user", user);
+      contactQuery.equalTo("name", contactName.trim());
+      const existingContact = await contactQuery.first({ useMasterKey: true });
+      if (existingContact) {
+        rt.set("contact", existingContact);
+      } else {
+        rt.unset("contact");
+      }
+    } else {
+      rt.unset("contact");
+      rt.unset("contactName");
+    }
+  }
+
+  // Handle category update
+  if (categoryId !== undefined) {
+    if (categoryId) {
+      const Category = Parse.Object.extend("Category");
+      const category = new Category();
+      category.id = categoryId;
+      rt.set("category", category);
+    } else {
+      rt.unset("category");
+    }
+  }
+
+  // Handle project update
+  if (projectId !== undefined) {
+    if (projectId) {
+      const Project = Parse.Object.extend("Project");
+      const project = new Project();
+      project.id = projectId;
+      rt.set("project", project);
+    } else {
+      rt.unset("project");
+    }
+  }
+
+  await rt.save(null, { useMasterKey: true });
+
+  // Fetch with includes for the response
+  const updatedQuery = new Parse.Query("RecurringTransaction");
+  updatedQuery.include(["contact", "category", "project"]);
+  const updated = await updatedQuery.get(rt.id, { useMasterKey: true });
+
+  console.log(`[updateRecurringTransaction] Updated: ${rt.id}`);
+  return transformRecurringTransaction(updated);
+});
+
+/**
+ * Delete a recurring transaction
+ */
+Parse.Cloud.define("deleteRecurringTransaction", async (request) => {
+  const user = requireUser(request);
+  const { recurringTransactionId } = request.params;
+
+  if (!recurringTransactionId) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, "recurringTransactionId is required");
+  }
+
+  const query = new Parse.Query("RecurringTransaction");
+  query.equalTo("user", user);
+  const rt = await query.get(recurringTransactionId, { useMasterKey: true });
+
+  if (!rt) {
+    throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, "Recurring transaction not found");
+  }
+
+  await rt.destroy({ useMasterKey: true });
+
+  console.log(`[deleteRecurringTransaction] Deleted: ${recurringTransactionId}`);
+  return { success: true, deletedId: recurringTransactionId };
+});
+
+/**
+ * Create an actual transaction from a recurring transaction template
+ */
+Parse.Cloud.define("createTransactionFromRecurring", async (request) => {
+  const user = requireUser(request);
+  const { recurringTransactionId, date, amount: overrideAmount, notes: overrideNotes } = request.params;
+
+  if (!recurringTransactionId) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, "recurringTransactionId is required");
+  }
+
+  // Fetch the recurring transaction
+  const rtQuery = new Parse.Query("RecurringTransaction");
+  rtQuery.equalTo("user", user);
+  rtQuery.include(["contact", "category", "project"]);
+  const rt = await rtQuery.get(recurringTransactionId, { useMasterKey: true });
+
+  if (!rt) {
+    throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, "Recurring transaction not found");
+  }
+
+  // Create the transaction
+  const Transaction = Parse.Object.extend("Transaction");
+  const transaction = new Transaction();
+
+  const transactionDate = date ? new Date(date) : new Date();
+  const amount = overrideAmount || rt.get("amount");
+  const currency = rt.get("currency");
+
+  transaction.set("user", user);
+  transaction.set("amount", amount);
+  transaction.set("currency", currency);
+  transaction.set("type", rt.get("type"));
+  transaction.set("date", transactionDate);
+  transaction.set("isRecurring", true);
+  transaction.set("recurringGroupId", rt.id);
+  transaction.set("description", rt.get("description"));
+  transaction.set("notes", overrideNotes || rt.get("notes"));
+
+  // Convert to INR
+  const amountINR = await convertToINR(amount, currency, transactionDate);
+  transaction.set("amountINR", amountINR);
+
+  // Handle contact
+  const contactName = rt.get("contactName");
+  if (contactName) {
+    transaction.set("contactName", contactName);
+
+    // Find or create contact
+    const contactQuery = new Parse.Query("Contact");
+    contactQuery.equalTo("user", user);
+    contactQuery.equalTo("name", contactName);
+    let contact = await contactQuery.first({ useMasterKey: true });
+
+    if (!contact) {
+      const Contact = Parse.Object.extend("Contact");
+      contact = new Contact();
+      contact.set("user", user);
+      contact.set("name", contactName);
+      contact.set("aliases", []);
+      contact.set("totalSpent", 0);
+      contact.set("totalReceived", 0);
+      contact.set("transactionCount", 0);
+      if (rt.get("project")) {
+        contact.set("project", rt.get("project"));
+      }
+      setUserACL(contact, user);
+      await contact.save(null, { useMasterKey: true });
+    }
+
+    transaction.set("contact", contact);
+
+    // Update contact stats
+    if (rt.get("type") === "expense") {
+      contact.increment("totalSpent", amountINR);
+    } else {
+      contact.increment("totalReceived", amountINR);
+    }
+    contact.increment("transactionCount", 1);
+    await contact.save(null, { useMasterKey: true });
+  }
+
+  // Handle category
+  if (rt.get("category")) {
+    transaction.set("category", rt.get("category"));
+    transaction.set("categoryName", rt.get("category").get("name"));
+  }
+
+  // Handle project
+  if (rt.get("project")) {
+    transaction.set("project", rt.get("project"));
+    transaction.set("projectName", rt.get("project").get("name"));
+  }
+
+  setUserACL(transaction, user);
+  await transaction.save(null, { useMasterKey: true });
+
+  // Update recurring transaction's lastCreatedAt and nextDueDate
+  rt.set("lastCreatedAt", transactionDate);
+  rt.set("nextDueDate", calculateNextDueDate(rt.get("frequency"), transactionDate));
+  await rt.save(null, { useMasterKey: true });
+
+  console.log(`[createTransactionFromRecurring] Created transaction ${transaction.id} from recurring ${rt.id}`);
+
+  return {
+    transaction: {
+      id: transaction.id,
+      amount: transaction.get("amount"),
+      currency: transaction.get("currency"),
+      type: transaction.get("type"),
+      date: transaction.get("date"),
+      contactName: transaction.get("contactName"),
+      categoryName: transaction.get("categoryName"),
+      projectName: transaction.get("projectName"),
+    },
+    recurringTransaction: transformRecurringTransaction(rt),
+  };
 });
 
 // ============================================

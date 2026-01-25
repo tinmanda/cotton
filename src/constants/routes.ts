@@ -29,6 +29,7 @@ export const ROUTES = {
   // Settings screens
   CONTACTS: "/settings/contacts",
   CATEGORIES: "/settings/categories",
+  RECURRING_TRANSACTIONS: "/settings/recurring",
 
   // Contact screens
   CONTACT_DETAIL: "/contacts/[id]",

@@ -91,6 +91,12 @@ export default function ProfileScreen() {
       title: "Business Settings",
       items: [
         {
+          icon: "repeat",
+          label: "Recurring",
+          subtitle: "Manage recurring expenses & income",
+          route: ROUTES.RECURRING_TRANSACTIONS,
+        },
+        {
           icon: "users",
           label: "Contacts",
           subtitle: "Manage your contacts",
