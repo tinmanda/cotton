@@ -9,20 +9,17 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import Constants from "expo-constants";
-import { useAuth } from "@/hooks/useAuth";
-import { useRouter } from "expo-router";
 import { COLORS, ROUTES } from "@/constants";
 import { useToast } from "@/hooks/useToast";
-import { FinanceService, ExportService } from "@/services";
+import { FinanceService, ExportService, ImportService } from "@/services";
 
 export default function ProfileScreen() {
-  const { user, signOut } = useAuth();
   const router = useRouter();
   const { showSuccess, showError } = useToast();
-  const [isSigningOut, setIsSigningOut] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [flaggedCount, setFlaggedCount] = useState(0);
 
   // Fetch flagged count on focus
@@ -35,20 +32,6 @@ export default function ProfileScreen() {
       });
     }, [])
   );
-
-  const handleSignOut = async () => {
-    if (isSigningOut) return;
-
-    setIsSigningOut(true);
-    const result = await signOut();
-    if (result.success) {
-      showSuccess("Signed out successfully");
-      router.replace(ROUTES.AUTH);
-    } else {
-      showError(result.error.message);
-      setIsSigningOut(false);
-    }
-  };
 
   const handleExport = async () => {
     if (isExporting) return;
@@ -70,14 +53,40 @@ export default function ProfileScreen() {
     }
   };
 
-  // Get user initials for avatar
-  const getInitials = () => {
-    if (!user?.fullName) return "U";
-    const names = user.fullName.trim().split(" ");
-    if (names.length >= 2) {
-      return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
+  const handleImport = async () => {
+    if (isImporting) return;
+
+    setIsImporting(true);
+    try {
+      const result = await ImportService.importFromFile();
+      if (result.success) {
+        const { stats, skipped } = result.data;
+        const importedTotal =
+          stats.categories +
+          stats.projects +
+          stats.contacts +
+          stats.transactions +
+          stats.recurringTransactions;
+        const skippedTotal =
+          skipped.categories +
+          skipped.projects +
+          skipped.contacts +
+          skipped.transactions +
+          skipped.recurringTransactions;
+
+        if (importedTotal > 0) {
+          showSuccess(
+            `Imported ${importedTotal} items${skippedTotal > 0 ? ` (${skippedTotal} already existed)` : ""}`
+          );
+        } else if (skippedTotal > 0) {
+          showSuccess("All items already exist in the database");
+        }
+      } else if (result.error.code !== "CANCELLED") {
+        showError(result.error.message);
+      }
+    } finally {
+      setIsImporting(false);
     }
-    return names[0][0].toUpperCase();
   };
 
   const menuSections = [
@@ -137,10 +146,20 @@ export default function ProfileScreen() {
         {
           icon: "download",
           label: "Export Data",
-          subtitle: "Export all data for backup or migration",
+          subtitle: "Export all data for backup",
           route: null,
           onPress: handleExport,
           loading: isExporting,
+          loadingText: "Exporting...",
+        },
+        {
+          icon: "upload",
+          label: "Import Data",
+          subtitle: "Import from Parse Server export",
+          route: null,
+          onPress: handleImport,
+          loading: isImporting,
+          loadingText: "Importing...",
         },
       ],
     },
@@ -165,34 +184,6 @@ export default function ProfileScreen() {
       </View>
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        {/* User Info Section */}
-        {user && (
-          <View className="px-6 py-8 border-b border-gray-100">
-            <View className="flex-row items-center">
-              {/* Avatar */}
-              <View
-                style={styles.avatarContainer}
-                className="items-center justify-center rounded-full mr-4"
-              >
-                <Text className="text-2xl font-semibold text-primary">
-                  {getInitials()}
-                </Text>
-              </View>
-
-              {/* User Details */}
-              <View className="flex-1">
-                <Text
-                  className="text-xl font-semibold text-gray-900 mb-1"
-                  style={styles.userName}
-                >
-                  {user.fullName || "User"}
-                </Text>
-                <Text className="text-sm text-gray-500">{user.phoneNumber}</Text>
-              </View>
-            </View>
-          </View>
-        )}
-
         {/* Menu Sections */}
         {menuSections.map((section, sectionIndex) => (
           <View key={section.title} className="px-6 py-4">
@@ -236,7 +227,9 @@ export default function ProfileScreen() {
                   <View className="ml-3 flex-1">
                     <View className="flex-row items-center">
                       <Text className="text-[15px] font-semibold text-gray-900">
-                        {"loading" in item && item.loading ? "Exporting..." : item.label}
+                        {"loading" in item && item.loading && "loadingText" in item
+                          ? item.loadingText
+                          : item.label}
                       </Text>
                       {"badge" in item && item.badge ? (
                         <View style={styles.badge} className="ml-2 px-2 py-0.5 rounded-full">
@@ -257,33 +250,9 @@ export default function ProfileScreen() {
           </View>
         ))}
 
-        {/* Sign Out Button */}
+        {/* App Version */}
         <View className="px-6 pt-4 pb-6">
-          <Pressable
-            onPress={handleSignOut}
-            disabled={isSigningOut}
-            style={[styles.signOutButton, isSigningOut && styles.signOutButtonDisabled]}
-            className="flex-row items-center justify-center rounded-xl py-3.5 active:opacity-80"
-          >
-            {isSigningOut ? (
-              <>
-                <ActivityIndicator size="small" color={COLORS.gray500} />
-                <Text className="ml-2 text-[15px] font-semibold text-gray-500">
-                  Signing out...
-                </Text>
-              </>
-            ) : (
-              <>
-                <Lucide name="log-out" size={18} color={COLORS.gray700} />
-                <Text className="ml-2 text-[15px] font-semibold text-gray-700">
-                  Sign Out
-                </Text>
-              </>
-            )}
-          </Pressable>
-
-          {/* App Version */}
-          <Text className="mt-6 text-center text-xs text-gray-400">
+          <Text className="text-center text-xs text-gray-400">
             Version {Constants.expoConfig?.version || "1.0.0"}
           </Text>
         </View>
@@ -293,16 +262,6 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  avatarContainer: {
-    width: 64,
-    height: 64,
-    backgroundColor: `${COLORS.primary}15`,
-    borderWidth: 2,
-    borderColor: `${COLORS.primary}30`,
-  },
-  userName: {
-    letterSpacing: -0.3,
-  },
   menuItem: {
     backgroundColor: COLORS.gray50,
     borderWidth: 1,
@@ -333,14 +292,5 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray100,
     alignItems: "center",
     justifyContent: "center",
-  },
-  signOutButton: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-  },
-  signOutButtonDisabled: {
-    backgroundColor: COLORS.gray50,
-    borderColor: COLORS.gray200,
   },
 });

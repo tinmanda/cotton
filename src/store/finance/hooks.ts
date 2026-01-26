@@ -1,59 +1,71 @@
 import { useCallback } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import {
-  contactsAtom,
-  contactsLoadingAtom,
-  contactsTimestampAtom,
-  categoriesAtom,
-  categoriesLoadingAtom,
-  categoriesTimestampAtom,
-  projectsAtom,
-  projectsLoadingAtom,
-  projectsTimestampAtom,
-  CACHE_TTL,
-} from "./atoms";
-import { FinanceService } from "@/services";
 import { IContact, ICategory, IProject } from "@/types";
 
+// Import from the new data layer
+import {
+  contactsAtom,
+  categoriesAtom,
+  projectsAtom,
+  contactsLoadingAtom,
+  categoriesLoadingAtom,
+  projectsLoadingAtom,
+  loadContactsAtom,
+  loadCategoriesAtom,
+  loadProjectsAtom,
+} from "@/data/atoms";
+
+import {
+  getAllContacts,
+  createContact as createContactRepo,
+  updateContact as updateContactRepo,
+  deleteContact as deleteContactRepo,
+} from "@/data/database/repositories/contacts";
+
+import {
+  getAllCategories,
+  createCategory as createCategoryRepo,
+  updateCategory as updateCategoryRepo,
+  deleteCategory as deleteCategoryRepo,
+} from "@/data/database/repositories/categories";
+
+import {
+  getAllProjects,
+  createProject as createProjectRepo,
+  updateProject as updateProjectRepo,
+  deleteProject as deleteProjectRepo,
+} from "@/data/database/repositories/projects";
+
 /**
- * Hook for managing contacts with caching
+ * Hook for managing contacts with SQLite
  * Returns contacts data and utility functions
  */
 export function useContacts() {
   const [contacts, setContacts] = useAtom(contactsAtom);
   const [isLoading, setIsLoading] = useAtom(contactsLoadingAtom);
-  const [timestamp, setTimestamp] = useAtom(contactsTimestampAtom);
-
-  const isCacheValid = useCallback(() => {
-    return timestamp > 0 && Date.now() - timestamp < CACHE_TTL;
-  }, [timestamp]);
+  const reloadContacts = useSetAtom(loadContactsAtom);
 
   const fetchContacts = useCallback(
     async (force = false) => {
-      // Skip if cache is valid and not forcing refresh
-      if (!force && isCacheValid() && contacts.length > 0) {
-        return { success: true, data: contacts };
-      }
-
-      setIsLoading(true);
-      try {
-        const result = await FinanceService.getContacts({});
-        if (result.success) {
-          setContacts(result.data);
-          setTimestamp(Date.now());
-          return { success: true, data: result.data };
+      // In local-first, just reload from SQLite
+      if (force || contacts.length === 0) {
+        setIsLoading(true);
+        try {
+          const freshContacts = getAllContacts();
+          setContacts(freshContacts);
+          return { success: true, data: freshContacts };
+        } finally {
+          setIsLoading(false);
         }
-        return result;
-      } finally {
-        setIsLoading(false);
       }
+      return { success: true, data: contacts };
     },
-    [contacts, isCacheValid, setContacts, setIsLoading, setTimestamp]
+    [contacts, setContacts, setIsLoading]
   );
 
   const invalidateContacts = useCallback(() => {
-    setTimestamp(0);
-  }, [setTimestamp]);
+    reloadContacts();
+  }, [reloadContacts]);
 
   const updateContact = useCallback(
     (updatedContact: IContact) => {
@@ -78,6 +90,9 @@ export function useContacts() {
     [setContacts]
   );
 
+  // Always valid in local-first (data is on device)
+  const isCacheValid = useCallback(() => true, []);
+
   return {
     contacts,
     isLoading,
@@ -91,43 +106,33 @@ export function useContacts() {
 }
 
 /**
- * Hook for managing categories with caching
+ * Hook for managing categories with SQLite
  */
 export function useCategories() {
   const [categories, setCategories] = useAtom(categoriesAtom);
   const [isLoading, setIsLoading] = useAtom(categoriesLoadingAtom);
-  const [timestamp, setTimestamp] = useAtom(categoriesTimestampAtom);
-
-  const isCacheValid = useCallback(() => {
-    return timestamp > 0 && Date.now() - timestamp < CACHE_TTL;
-  }, [timestamp]);
+  const reloadCategories = useSetAtom(loadCategoriesAtom);
 
   const fetchCategories = useCallback(
     async (force = false) => {
-      // Skip if cache is valid and not forcing refresh
-      if (!force && isCacheValid() && categories.length > 0) {
-        return { success: true, data: categories };
-      }
-
-      setIsLoading(true);
-      try {
-        const result = await FinanceService.getCategories();
-        if (result.success) {
-          setCategories(result.data);
-          setTimestamp(Date.now());
-          return { success: true, data: result.data };
+      if (force || categories.length === 0) {
+        setIsLoading(true);
+        try {
+          const freshCategories = getAllCategories();
+          setCategories(freshCategories);
+          return { success: true, data: freshCategories };
+        } finally {
+          setIsLoading(false);
         }
-        return result;
-      } finally {
-        setIsLoading(false);
       }
+      return { success: true, data: categories };
     },
-    [categories, isCacheValid, setCategories, setIsLoading, setTimestamp]
+    [categories, setCategories, setIsLoading]
   );
 
   const invalidateCategories = useCallback(() => {
-    setTimestamp(0);
-  }, [setTimestamp]);
+    reloadCategories();
+  }, [reloadCategories]);
 
   const updateCategory = useCallback(
     (updatedCategory: ICategory) => {
@@ -152,6 +157,8 @@ export function useCategories() {
     [setCategories]
   );
 
+  const isCacheValid = useCallback(() => true, []);
+
   return {
     categories,
     isLoading,
@@ -165,43 +172,33 @@ export function useCategories() {
 }
 
 /**
- * Hook for managing projects with caching
+ * Hook for managing projects with SQLite
  */
 export function useProjects() {
   const [projects, setProjects] = useAtom(projectsAtom);
   const [isLoading, setIsLoading] = useAtom(projectsLoadingAtom);
-  const [timestamp, setTimestamp] = useAtom(projectsTimestampAtom);
-
-  const isCacheValid = useCallback(() => {
-    return timestamp > 0 && Date.now() - timestamp < CACHE_TTL;
-  }, [timestamp]);
+  const reloadProjects = useSetAtom(loadProjectsAtom);
 
   const fetchProjects = useCallback(
     async (force = false) => {
-      // Skip if cache is valid and not forcing refresh
-      if (!force && isCacheValid() && projects.length > 0) {
-        return { success: true, data: projects };
-      }
-
-      setIsLoading(true);
-      try {
-        const result = await FinanceService.getProjects();
-        if (result.success) {
-          setProjects(result.data);
-          setTimestamp(Date.now());
-          return { success: true, data: result.data };
+      if (force || projects.length === 0) {
+        setIsLoading(true);
+        try {
+          const freshProjects = getAllProjects();
+          setProjects(freshProjects);
+          return { success: true, data: freshProjects };
+        } finally {
+          setIsLoading(false);
         }
-        return result;
-      } finally {
-        setIsLoading(false);
       }
+      return { success: true, data: projects };
     },
-    [projects, isCacheValid, setProjects, setIsLoading, setTimestamp]
+    [projects, setProjects, setIsLoading]
   );
 
   const invalidateProjects = useCallback(() => {
-    setTimestamp(0);
-  }, [setTimestamp]);
+    reloadProjects();
+  }, [reloadProjects]);
 
   const updateProject = useCallback(
     (updatedProject: IProject) => {
@@ -225,6 +222,8 @@ export function useProjects() {
     },
     [setProjects]
   );
+
+  const isCacheValid = useCallback(() => true, []);
 
   return {
     projects,

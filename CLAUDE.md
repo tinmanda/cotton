@@ -4,6 +4,73 @@
 
 Cotton is a React Native boilerplate project built with Expo, TypeScript, and Back4App Parse Server.
 
+## Local-First Migration (Branch: `local-first`)
+
+**Status:** Implemented (Ready for Testing)
+
+We have migrated from Back4App Parse Server to a local-first architecture using **expo-sqlite** for privacy reasons.
+
+### Why Local-First?
+- **Privacy as a feature**: User financial data never leaves their device
+- **No server costs** for data storage (only AI cloud functions)
+- **Offline-first**: Works without internet
+- **GDPR compliant by design**
+
+### Architecture
+```
+┌─────────────────────────────────────────────────────────┐
+│                    UI Components                         │
+├─────────────────────────────────────────────────────────┤
+│                    Jotai Atoms                          │
+│   (loaded from SQLite, no more cache TTL needed)        │
+├─────────────────────────────────────────────────────────┤
+│                    Repositories                          │
+│   (src/data/database/repositories/)                     │
+├─────────────────────────────────────────────────────────┤
+│                    SQLite Database                       │
+│              (cotton.db via expo-sqlite)                │
+├─────────────────────────────────────────────────────────┤
+│          Back4App Cloud Functions (AI only)             │
+│   (parseTransaction, suggestRecurring, etc.)            │
+└─────────────────────────────────────────────────────────┘
+```
+
+### What Changed
+- **Data storage**: Parse Server → expo-sqlite (local)
+- **Services**: `FinanceService` now uses SQLite repositories for CRUD
+- **AI features**: Still use Back4App Cloud Functions
+- **Auth**: Simplified (single user, local)
+- **Sync**: Deferred (iCloud/Google Drive backup planned for later)
+
+### New Folder Structure
+```
+src/data/
+├── database/
+│   ├── index.ts           # DB instance + migration runner
+│   ├── migrations/        # Schema migrations
+│   │   └── 000_initial.ts
+│   └── repositories/      # CRUD for each entity
+│       ├── categories.ts
+│       ├── projects.ts
+│       ├── contacts.ts
+│       ├── transactions.ts
+│       └── recurring.ts
+├── atoms.ts               # Jotai atoms synced with SQLite
+└── seed/                  # Default categories, etc.
+```
+
+### Migration Checklist
+- [x] Install expo-sqlite and expo-file-system
+- [x] Create database structure and migrations
+- [x] Create repositories for all entities (categories, projects, contacts, transactions, recurring)
+- [x] Update Jotai atoms to load from SQLite
+- [x] Update FinanceService (CRUD uses SQLite, AI uses Back4App Cloud Functions)
+- [x] Update store/finance hooks to use SQLite
+- [x] Verify screen compatibility with SQLite-based services
+- [ ] Manual testing of all screens
+- [ ] Manual data migration from Back4App (if needed)
+- [ ] Add iCloud/Google Drive backup (deferred to later)
+
 ## Critical Constraints
 
 ### Expo Go Only
