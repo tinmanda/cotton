@@ -19,7 +19,7 @@ import { IContact } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
 type FilterType = "all" | "revenue" | "expense";
-type SortType = "amount" | "name_asc" | "name_desc";
+type SortType = "amount_desc" | "amount_asc" | "name_asc" | "name_desc";
 
 function formatAmount(amount: number, currency: string = "INR"): string {
   const isNegative = amount < 0;
@@ -58,7 +58,7 @@ export default function ContactsScreen() {
   const [contacts, setContacts] = useState<IContact[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
-  const [activeSort, setActiveSort] = useState<SortType>("amount");
+  const [activeSort, setActiveSort] = useState<SortType>("amount_desc");
 
   const loadContacts = useCallback(
     async (showLoader = true) => {
@@ -107,11 +107,17 @@ export default function ContactsScreen() {
     // Apply sort
     const sorted = [...filtered].sort((a, b) => {
       switch (activeSort) {
-        case "amount": {
+        case "amount_desc": {
           // Sort by net amount (received - spent), highest first
           const netA = (a.totalReceived || 0) - (a.totalSpent || 0);
           const netB = (b.totalReceived || 0) - (b.totalSpent || 0);
           return netB - netA;
+        }
+        case "amount_asc": {
+          // Sort by net amount (received - spent), lowest first
+          const netA = (a.totalReceived || 0) - (a.totalSpent || 0);
+          const netB = (b.totalReceived || 0) - (b.totalSpent || 0);
+          return netA - netB;
         }
         case "name_asc":
           return a.name.localeCompare(b.name);
@@ -141,7 +147,8 @@ export default function ContactsScreen() {
   ];
 
   const sortOptions: { key: SortType; label: string; icon: string }[] = [
-    { key: "amount", label: "Amount", icon: "arrow-up-down" },
+    { key: "amount_desc", label: "Amount ↓", icon: "arrow-down" },
+    { key: "amount_asc", label: "Amount ↑", icon: "arrow-up" },
     { key: "name_asc", label: "A-Z", icon: "arrow-down-a-z" },
     { key: "name_desc", label: "Z-A", icon: "arrow-up-a-z" },
   ];
