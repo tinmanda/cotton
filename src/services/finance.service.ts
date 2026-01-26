@@ -8,9 +8,6 @@ import {
   IRecurringTransaction,
   IDashboardSummary,
   IProjectSummary,
-  ParseTransactionResponse,
-  ParseBulkTransactionsResponse,
-  ParseImageTransactionsResponse,
   ParseTransactionInputResponse,
   ImageInput,
   CreateBulkTransactionsRequest,
@@ -27,27 +24,74 @@ import {
 } from "@/types";
 import { CLOUD_FUNCTIONS } from "@/constants";
 
+// Import SQLite repositories
+import {
+  getAllCategories,
+  getCategoryById,
+  createCategory as createCategoryRepo,
+  updateCategory as updateCategoryRepo,
+  deleteCategory as deleteCategoryRepo,
+} from "@/data/database/repositories/categories";
+import {
+  getAllProjects,
+  getProjectById,
+  createProject as createProjectRepo,
+  updateProject as updateProjectRepo,
+  deleteProject as deleteProjectRepo,
+  getProjectsWithSummaries,
+  getProjectSummary as getProjectSummaryRepo,
+} from "@/data/database/repositories/projects";
+import {
+  getAllContacts,
+  getContactById,
+  createContact as createContactRepo,
+  updateContact as updateContactRepo,
+  deleteContact as deleteContactRepo,
+  getOrCreateContact,
+  recalculateContactTotals,
+} from "@/data/database/repositories/contacts";
+import {
+  getTransactions as getTransactionsRepo,
+  getTransactionById,
+  createTransaction as createTransactionRepo,
+  updateTransaction as updateTransactionRepo,
+  deleteTransaction as deleteTransactionRepo,
+  getFlaggedTransactions as getFlaggedTransactionsRepo,
+  markTransactionReviewed as markTransactionReviewedRepo,
+  getFlaggedCount as getFlaggedCountRepo,
+  getDashboardTotals,
+  getRecentTransactions,
+} from "@/data/database/repositories/transactions";
+import {
+  getAllRecurringTransactions,
+  getRecurringTransactionById,
+  createRecurringTransaction as createRecurringRepo,
+  updateRecurringTransaction as updateRecurringRepo,
+  deleteRecurringTransaction as deleteRecurringRepo,
+  markRecurringTransactionCreated,
+} from "@/data/database/repositories/recurring";
+import { generateId } from "@/data/database";
+
 /**
- * Finance service
- * Handles all finance-related operations
+ * Finance service - Local-First Architecture
+ *
+ * - CRUD operations use SQLite (local)
+ * - AI features use Back4App Cloud Functions (remote)
  */
 export class FinanceService {
   // ============================================
-  // Categories
+  // Categories (Local SQLite)
   // ============================================
 
   /**
-   * Seed default categories for the user
+   * Seed default categories - now handled by SQLite migration
    */
   static async seedCategories(): Promise<
     ApiResponse<{ success: boolean; count: number }>
   > {
-    try {
-      const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.SEED_CATEGORIES);
-      return successResponse(result);
-    } catch (error) {
-      return errorResponseFromUnknown(error);
-    }
+    // Categories are seeded automatically by SQLite migration
+    const categories = getAllCategories();
+    return successResponse({ success: true, count: categories.length });
   }
 
   /**
@@ -57,23 +101,15 @@ export class FinanceService {
     type?: TransactionType
   ): Promise<ApiResponse<ICategory[]>> {
     try {
-      const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.GET_CATEGORIES, {
-        type,
-      });
-      return successResponse(
-        result.map((c: ICategory) => ({
-          ...c,
-          createdAt: new Date(c.createdAt),
-          updatedAt: new Date(c.updatedAt),
-        }))
-      );
+      const categories = getAllCategories(type);
+      return successResponse(categories);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
   }
 
   // ============================================
-  // Projects
+  // Projects (Local SQLite)
   // ============================================
 
   /**
@@ -88,15 +124,8 @@ export class FinanceService {
     currency?: Currency;
   }): Promise<ApiResponse<IProject>> {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.CREATE_PROJECT,
-        params
-      );
-      return successResponse({
-        ...result,
-        createdAt: new Date(result.createdAt),
-        updatedAt: new Date(result.updatedAt),
-      });
+      const project = createProjectRepo(params);
+      return successResponse(project);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -109,16 +138,8 @@ export class FinanceService {
     status?: ProjectStatus
   ): Promise<ApiResponse<IProject[]>> {
     try {
-      const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.GET_PROJECTS, {
-        status,
-      });
-      return successResponse(
-        result.map((p: IProject) => ({
-          ...p,
-          createdAt: new Date(p.createdAt),
-          updatedAt: new Date(p.updatedAt),
-        }))
-      );
+      const projects = getAllProjects(status);
+      return successResponse(projects);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -138,22 +159,27 @@ export class FinanceService {
     currency?: Currency;
   }): Promise<ApiResponse<IProject>> {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.UPDATE_PROJECT,
-        params
-      );
-      return successResponse({
-        ...result,
-        createdAt: new Date(result.createdAt),
-        updatedAt: new Date(result.updatedAt),
+      const project = updateProjectRepo({
+        id: params.projectId,
+        name: params.name,
+        type: params.type,
+        status: params.status,
+        description: params.description,
+        color: params.color,
+        monthlyBudget: params.monthlyBudget,
+        currency: params.currency,
       });
+      if (!project) {
+        return errorResponseFromUnknown(new Error("Project not found"));
+      }
+      return successResponse(project);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
   }
 
   // ============================================
-  // Contacts
+  // Contacts (Local SQLite)
   // ============================================
 
   /**
@@ -171,15 +197,8 @@ export class FinanceService {
     projectId?: string;
   }): Promise<ApiResponse<IContact>> {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.CREATE_CONTACT,
-        params
-      );
-      return successResponse({
-        ...result,
-        createdAt: new Date(result.createdAt),
-        updatedAt: new Date(result.updatedAt),
-      });
+      const contact = createContactRepo(params);
+      return successResponse(contact);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -194,17 +213,8 @@ export class FinanceService {
     limit?: number;
   }): Promise<ApiResponse<IContact[]>> {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.GET_CONTACTS,
-        params || {}
-      );
-      return successResponse(
-        result.map((c: IContact) => ({
-          ...c,
-          createdAt: new Date(c.createdAt),
-          updatedAt: new Date(c.updatedAt),
-        }))
-      );
+      const contacts = getAllContacts(params);
+      return successResponse(contacts);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -226,15 +236,22 @@ export class FinanceService {
     projectId?: string | null;
   }): Promise<ApiResponse<IContact>> {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.UPDATE_CONTACT,
-        params
-      );
-      return successResponse({
-        ...result,
-        createdAt: new Date(result.createdAt),
-        updatedAt: new Date(result.updatedAt),
+      const contact = updateContactRepo({
+        id: params.contactId,
+        name: params.name,
+        aliases: params.aliases,
+        email: params.email,
+        phone: params.phone,
+        company: params.company,
+        website: params.website,
+        notes: params.notes,
+        defaultCategoryId: params.defaultCategoryId,
+        projectId: params.projectId,
       });
+      if (!contact) {
+        return errorResponseFromUnknown(new Error("Contact not found"));
+      }
+      return successResponse(contact);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -242,83 +259,28 @@ export class FinanceService {
 
   /**
    * Delete a contact
-   * Note: Will fail if contact has associated transactions
    */
   static async deleteContact(
     contactId: string
   ): Promise<ApiResponse<{ success: boolean; deletedId: string }>> {
     try {
-      const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.DELETE_CONTACT, {
-        contactId,
-      });
-      return successResponse(result);
+      const deleted = deleteContactRepo(contactId);
+      if (!deleted) {
+        return errorResponseFromUnknown(new Error("Contact not found"));
+      }
+      return successResponse({ success: true, deletedId: contactId });
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
   }
 
   // ============================================
-  // Transactions
+  // Transactions (Local SQLite + AI from Back4App)
   // ============================================
-
-  /**
-   * Parse raw text into transaction data using AI
-   */
-  static async parseTransaction(
-    text: string,
-    source?: string
-  ): Promise<ApiResponse<ParseTransactionResponse>> {
-    try {
-      const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.PARSE_TRANSACTION, {
-        text,
-        source,
-      });
-      return successResponse(result);
-    } catch (error) {
-      return errorResponseFromUnknown(error);
-    }
-  }
-
-  /**
-   * Parse bulk transactions from text (e.g., salary ranges, recurring payments)
-   */
-  static async parseBulkTransactions(
-    text: string,
-    source?: string
-  ): Promise<ApiResponse<ParseBulkTransactionsResponse>> {
-    try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.PARSE_BULK_TRANSACTIONS,
-        { text, source }
-      );
-      return successResponse(result);
-    } catch (error) {
-      return errorResponseFromUnknown(error);
-    }
-  }
-
-  /**
-   * Parse transactions from an image (receipt, invoice, bank statement)
-   */
-  static async parseTransactionFromImage(
-    imageBase64: string,
-    mediaType?: string,
-    source?: string
-  ): Promise<ApiResponse<ParseImageTransactionsResponse>> {
-    try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.PARSE_TRANSACTION_FROM_IMAGE,
-        { imageBase64, mediaType, source }
-      );
-      return successResponse(result);
-    } catch (error) {
-      return errorResponseFromUnknown(error);
-    }
-  }
 
   /**
    * Parse transactions from unified input (text and/or images)
-   * Supports optional text, optional multiple images, or both
+   * Uses Back4App Cloud Function for AI processing
    */
   static async parseTransactionInput(params: {
     text?: string;
@@ -326,9 +288,33 @@ export class FinanceService {
     source?: string;
   }): Promise<ApiResponse<ParseTransactionInputResponse>> {
     try {
+      // Get context data for AI
+      const contacts = getAllContacts();
+      const categories = getAllCategories();
+      const projects = getAllProjects();
+
       const result = await Parse.Cloud.run(
         CLOUD_FUNCTIONS.PARSE_TRANSACTION_INPUT,
-        params
+        {
+          ...params,
+          // Send context for AI to use for matching
+          context: {
+            contacts: contacts.map((c) => ({
+              id: c.id,
+              name: c.name,
+              aliases: c.aliases,
+            })),
+            categories: categories.map((c) => ({
+              id: c.id,
+              name: c.name,
+              type: c.type,
+            })),
+            projects: projects.map((p) => ({
+              id: p.id,
+              name: p.name,
+            })),
+          },
+        }
       );
       return successResponse(result);
     } catch (error) {
@@ -337,17 +323,61 @@ export class FinanceService {
   }
 
   /**
-   * Create multiple transactions at once
+   * Create multiple transactions at once (from AI parsing)
    */
   static async createBulkTransactions(
     params: CreateBulkTransactionsRequest
   ): Promise<ApiResponse<CreateBulkTransactionsResponse>> {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.CREATE_BULK_TRANSACTIONS,
-        params
-      );
-      return successResponse(result);
+      const created: Array<{
+        id: string;
+        amount: number;
+        currency: Currency;
+        type: TransactionType;
+        date: string;
+        contactName: string;
+      }> = [];
+
+      for (const t of params.transactions) {
+        // Get or create contact
+        const contact = getOrCreateContact(t.contactName);
+
+        // Calculate INR amount (for now, assume 1:1 for INR, 83 for USD)
+        const amountINR =
+          t.currency === "USD" ? t.amount * 83 : t.amount;
+
+        // Create transaction
+        const transaction = createTransactionRepo({
+          amount: t.amount,
+          currency: t.currency,
+          amountINR,
+          type: t.type,
+          date: t.date,
+          contactId: contact.id,
+          categoryId: t.categoryId,
+          projectId: t.projectId,
+          description: t.description,
+          needsReview: t.needsReview,
+          confidence: t.confidence,
+        });
+
+        created.push({
+          id: transaction.id,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          type: transaction.type,
+          date:
+            typeof transaction.date === "string"
+              ? transaction.date
+              : transaction.date.toISOString(),
+          contactName: t.contactName,
+        });
+      }
+
+      return successResponse({
+        created: created.length,
+        transactions: created,
+      });
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -371,16 +401,30 @@ export class FinanceService {
     isRecurring?: boolean;
   }): Promise<ApiResponse<ITransaction>> {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.CREATE_TRANSACTION_FROM_PARSED,
-        params
-      );
-      return successResponse({
-        ...result,
-        date: new Date(result.date),
-        createdAt: new Date(result.createdAt),
-        updatedAt: new Date(result.updatedAt),
+      // Get or create contact
+      const contact = getOrCreateContact(params.contactName);
+
+      // Calculate INR amount
+      const amountINR =
+        params.currency === "USD" ? params.amount * 83 : params.amount;
+
+      const transaction = createTransactionRepo({
+        amount: params.amount,
+        currency: params.currency,
+        amountINR,
+        type: params.type,
+        date: params.date,
+        contactId: contact.id,
+        categoryId: params.categoryId,
+        projectId: params.projectId,
+        allocations: params.allocations,
+        description: params.description,
+        notes: params.notes,
+        rawInputId: params.rawInputId,
+        isRecurring: params.isRecurring,
       });
+
+      return successResponse(transaction);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -401,34 +445,8 @@ export class FinanceService {
     }>
   > {
     try {
-      const params: Record<string, unknown> = {};
-      if (filters?.startDate)
-        params.startDate = filters.startDate.toISOString();
-      if (filters?.endDate) params.endDate = filters.endDate.toISOString();
-      if (filters?.type) params.type = filters.type;
-      if (filters?.projectId) params.projectId = filters.projectId;
-      if (filters?.categoryId) params.categoryId = filters.categoryId;
-      if (filters?.contactId) params.contactId = filters.contactId;
-      if (filters?.limit) params.limit = filters.limit;
-      if (filters?.skip) params.skip = filters.skip;
-
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.GET_TRANSACTIONS,
-        params
-      );
-
-      return successResponse({
-        transactions: result.transactions.map((t: ITransaction) => ({
-          ...t,
-          date: new Date(t.date),
-          createdAt: new Date(t.createdAt),
-          updatedAt: new Date(t.updatedAt),
-        })),
-        total: result.total,
-        totalIncome: result.totalIncome || 0,
-        totalExpenses: result.totalExpenses || 0,
-        hasMore: result.hasMore,
-      });
+      const result = getTransactionsRepo(filters);
+      return successResponse(result);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -450,16 +468,42 @@ export class FinanceService {
     notes?: string;
   }): Promise<ApiResponse<ITransaction>> {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.UPDATE_TRANSACTION,
-        params
-      );
-      return successResponse({
-        ...result,
-        date: new Date(result.date),
-        createdAt: new Date(result.createdAt),
-        updatedAt: new Date(result.updatedAt),
+      // If contact name changed, get or create the contact
+      let contactId: string | undefined | null;
+      if (params.contactName) {
+        const contact = getOrCreateContact(params.contactName);
+        contactId = contact.id;
+      }
+
+      // Calculate INR amount if amount/currency changed
+      let amountINR: number | undefined;
+      if (params.amount !== undefined || params.currency !== undefined) {
+        const existing = getTransactionById(params.transactionId);
+        if (existing) {
+          const amount = params.amount ?? existing.amount;
+          const currency = params.currency ?? existing.currency;
+          amountINR = currency === "USD" ? amount * 83 : amount;
+        }
+      }
+
+      const transaction = updateTransactionRepo({
+        id: params.transactionId,
+        amount: params.amount,
+        currency: params.currency,
+        amountINR,
+        type: params.type,
+        date: params.date,
+        contactId,
+        categoryId: params.categoryId,
+        projectId: params.projectId,
+        description: params.description,
+        notes: params.notes,
       });
+
+      if (!transaction) {
+        return errorResponseFromUnknown(new Error("Transaction not found"));
+      }
+      return successResponse(transaction);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -472,17 +516,18 @@ export class FinanceService {
     transactionId: string
   ): Promise<ApiResponse<{ success: boolean; deletedId: string }>> {
     try {
-      const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.DELETE_TRANSACTION, {
-        transactionId,
-      });
-      return successResponse(result);
+      const deleted = deleteTransactionRepo(transactionId);
+      if (!deleted) {
+        return errorResponseFromUnknown(new Error("Transaction not found"));
+      }
+      return successResponse({ success: true, deletedId: transactionId });
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
   }
 
   // ============================================
-  // Dashboard & Analytics
+  // Dashboard & Analytics (Local SQLite)
   // ============================================
 
   /**
@@ -493,25 +538,64 @@ export class FinanceService {
     endDate?: Date;
   }): Promise<ApiResponse<IDashboardSummary>> {
     try {
-      const cloudParams: Record<string, string> = {};
-      if (params?.startDate)
-        cloudParams.startDate = params.startDate.toISOString();
-      if (params?.endDate) cloudParams.endDate = params.endDate.toISOString();
+      const totals = getDashboardTotals();
+      const recentTransactions = getRecentTransactions(10);
+      const projects = getAllProjects();
+      const contacts = getAllContacts();
+      const projectSummaries = getProjectsWithSummaries();
+      const categories = getAllCategories("expense");
 
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.GET_DASHBOARD,
-        cloudParams
-      );
-
-      return successResponse({
-        ...result,
-        recentTransactions: result.recentTransactions.map(
-          (t: ITransaction) => ({
-            ...t,
-            date: new Date(t.date),
-          })
-        ),
+      // Calculate top expense categories
+      const categoryTotals: Record<string, number> = {};
+      const transactionsResult = getTransactionsRepo({
+        type: "expense",
+        startDate: params?.startDate,
+        endDate: params?.endDate,
       });
+
+      for (const t of transactionsResult.transactions) {
+        if (t.categoryId) {
+          categoryTotals[t.categoryId] =
+            (categoryTotals[t.categoryId] || 0) + t.amountINR;
+        }
+      }
+
+      const topExpenseCategories = Object.entries(categoryTotals)
+        .map(([categoryId, amount]) => {
+          const category = categories.find((c) => c.id === categoryId);
+          return {
+            category: category!,
+            amount,
+            percentage:
+              totals.totalExpenses > 0
+                ? (amount / totals.totalExpenses) * 100
+                : 0,
+          };
+        })
+        .filter((c) => c.category)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5);
+
+      const dashboard: IDashboardSummary = {
+        totalIncome: totals.totalIncome,
+        totalExpenses: totals.totalExpenses,
+        netAmount: totals.totalIncome - totals.totalExpenses,
+        transactionCount: totals.transactionCount,
+        projectCount: projects.length,
+        contactCount: contacts.length,
+        recentTransactions,
+        projectSummaries: projectSummaries.map((p) => ({
+          project: p,
+          id: p.id,
+          income: p.income,
+          expenses: p.expenses,
+          net: p.net,
+        })),
+        topExpenseCategories,
+        monthlyTrend: [], // TODO: Calculate monthly trend
+      };
+
+      return successResponse(dashboard);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -525,23 +609,88 @@ export class FinanceService {
     params?: { startDate?: Date; endDate?: Date }
   ): Promise<ApiResponse<IProjectSummary>> {
     try {
-      const cloudParams: Record<string, string> = { projectId };
-      if (params?.startDate)
-        cloudParams.startDate = params.startDate.toISOString();
-      if (params?.endDate) cloudParams.endDate = params.endDate.toISOString();
+      const project = getProjectById(projectId);
+      if (!project) {
+        return errorResponseFromUnknown(new Error("Project not found"));
+      }
 
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.GET_PROJECT_SUMMARY,
-        cloudParams
-      );
-      return successResponse(result);
+      const summary = getProjectSummaryRepo(projectId);
+      if (!summary) {
+        return errorResponseFromUnknown(new Error("Could not get project summary"));
+      }
+
+      const transactions = getTransactionsRepo({
+        projectId,
+        startDate: params?.startDate,
+        endDate: params?.endDate,
+      });
+
+      // Calculate top categories
+      const categoryTotals: Record<string, number> = {};
+      for (const t of transactions.transactions) {
+        if (t.categoryId) {
+          categoryTotals[t.categoryId] =
+            (categoryTotals[t.categoryId] || 0) + t.amountINR;
+        }
+      }
+
+      const categories = getAllCategories();
+      const topCategories = Object.entries(categoryTotals)
+        .map(([categoryId, amount]) => {
+          const category = categories.find((c) => c.id === categoryId);
+          return {
+            category: category!,
+            amount,
+            percentage:
+              summary.expenses > 0 ? (amount / summary.expenses) * 100 : 0,
+          };
+        })
+        .filter((c) => c.category)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5);
+
+      // Get contacts for this project
+      const contactTotals: Record<
+        string,
+        { name: string; amount: number; count: number }
+      > = {};
+      for (const t of transactions.transactions) {
+        if (t.contactId && t.contactName) {
+          if (!contactTotals[t.contactId]) {
+            contactTotals[t.contactId] = {
+              name: t.contactName,
+              amount: 0,
+              count: 0,
+            };
+          }
+          contactTotals[t.contactId].amount += t.amountINR;
+          contactTotals[t.contactId].count++;
+        }
+      }
+
+      const projectContacts = Object.entries(contactTotals)
+        .map(([id, { name, amount, count }]) => ({ id, name, amount, count }))
+        .sort((a, b) => b.amount - a.amount);
+
+      const projectSummary: IProjectSummary = {
+        project,
+        totalIncome: summary.income,
+        totalExpenses: summary.expenses,
+        netAmount: summary.net,
+        transactionCount: summary.transactionCount,
+        topCategories,
+        contacts: projectContacts,
+        monthlyTrend: [], // TODO: Calculate monthly trend
+      };
+
+      return successResponse(projectSummary);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
   }
 
   // ============================================
-  // Flagged Transactions
+  // Flagged Transactions (Local SQLite)
   // ============================================
 
   /**
@@ -553,37 +702,27 @@ export class FinanceService {
   }): Promise<
     ApiResponse<{
       transactions: ITransaction[];
-      duplicateTransactions: Record<string, { id: string; amount: number; currency: string; type: string; date: Date; contactName: string; projectName?: string }>;
+      duplicateTransactions: Record<
+        string,
+        {
+          id: string;
+          amount: number;
+          currency: string;
+          type: string;
+          date: Date;
+          contactName: string;
+          projectName?: string;
+        }
+      >;
       total: number;
       hasMore: boolean;
     }>
   > {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.GET_FLAGGED_TRANSACTIONS,
-        params
-      );
-
-      // Convert duplicate transaction dates
-      const duplicateTransactions: Record<string, { id: string; amount: number; currency: string; type: string; date: Date; contactName: string; projectName?: string }> = {};
-      for (const [id, dup] of Object.entries(result.duplicateTransactions || {})) {
-        const d = dup as { id: string; amount: number; currency: string; type: string; date: string; contactName: string; projectName?: string };
-        duplicateTransactions[id] = {
-          ...d,
-          date: new Date(d.date),
-        };
-      }
-
+      const result = getFlaggedTransactionsRepo(params);
       return successResponse({
-        transactions: result.transactions.map((t: ITransaction) => ({
-          ...t,
-          date: new Date(t.date),
-          createdAt: new Date(t.createdAt),
-          updatedAt: new Date(t.updatedAt),
-        })),
-        duplicateTransactions,
-        total: result.total,
-        hasMore: result.hasMore,
+        ...result,
+        duplicateTransactions: {}, // TODO: Implement duplicate detection
       });
     } catch (error) {
       return errorResponseFromUnknown(error);
@@ -591,17 +730,17 @@ export class FinanceService {
   }
 
   /**
-   * Mark a transaction as reviewed (remove the flag)
+   * Mark a transaction as reviewed
    */
   static async markTransactionReviewed(
     transactionId: string
   ): Promise<ApiResponse<{ success: boolean; transactionId: string }>> {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.MARK_TRANSACTION_REVIEWED,
-        { transactionId }
-      );
-      return successResponse(result);
+      const marked = markTransactionReviewedRepo(transactionId);
+      if (!marked) {
+        return errorResponseFromUnknown(new Error("Transaction not found"));
+      }
+      return successResponse({ success: true, transactionId });
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -612,15 +751,15 @@ export class FinanceService {
    */
   static async getFlaggedCount(): Promise<ApiResponse<{ count: number }>> {
     try {
-      const result = await Parse.Cloud.run(CLOUD_FUNCTIONS.GET_FLAGGED_COUNT);
-      return successResponse(result);
+      const count = getFlaggedCountRepo();
+      return successResponse({ count });
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
   }
 
   // ============================================
-  // Recurring Transactions
+  // Recurring Transactions (Local SQLite + AI from Back4App)
   // ============================================
 
   /**
@@ -639,17 +778,27 @@ export class FinanceService {
     notes?: string;
   }): Promise<ApiResponse<IRecurringTransaction>> {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.CREATE_RECURRING_TRANSACTION,
-        params
-      );
-      return successResponse({
-        ...result,
-        lastCreatedAt: result.lastCreatedAt ? new Date(result.lastCreatedAt) : undefined,
-        nextDueDate: result.nextDueDate ? new Date(result.nextDueDate) : undefined,
-        createdAt: new Date(result.createdAt),
-        updatedAt: new Date(result.updatedAt),
+      // Get or create contact if name provided
+      let contactId: string | undefined;
+      if (params.contactName) {
+        const contact = getOrCreateContact(params.contactName);
+        contactId = contact.id;
+      }
+
+      const recurring = createRecurringRepo({
+        name: params.name,
+        amount: params.amount,
+        currency: params.currency,
+        type: params.type,
+        frequency: params.frequency,
+        contactId,
+        categoryId: params.categoryId,
+        projectId: params.projectId,
+        description: params.description,
+        notes: params.notes,
       });
+
+      return successResponse(recurring);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -664,19 +813,8 @@ export class FinanceService {
     isActive?: boolean;
   }): Promise<ApiResponse<IRecurringTransaction[]>> {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.GET_RECURRING_TRANSACTIONS,
-        params || {}
-      );
-      return successResponse(
-        result.map((rt: IRecurringTransaction) => ({
-          ...rt,
-          lastCreatedAt: rt.lastCreatedAt ? new Date(rt.lastCreatedAt) : undefined,
-          nextDueDate: rt.nextDueDate ? new Date(rt.nextDueDate) : undefined,
-          createdAt: new Date(rt.createdAt),
-          updatedAt: new Date(rt.updatedAt),
-        }))
-      );
+      const recurring = getAllRecurringTransactions(params);
+      return successResponse(recurring);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -700,17 +838,36 @@ export class FinanceService {
     isActive?: boolean;
   }): Promise<ApiResponse<IRecurringTransaction>> {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.UPDATE_RECURRING_TRANSACTION,
-        params
-      );
-      return successResponse({
-        ...result,
-        lastCreatedAt: result.lastCreatedAt ? new Date(result.lastCreatedAt) : undefined,
-        nextDueDate: result.nextDueDate ? new Date(result.nextDueDate) : undefined,
-        createdAt: new Date(result.createdAt),
-        updatedAt: new Date(result.updatedAt),
+      // Get or create contact if name provided
+      let contactId: string | undefined | null;
+      if (params.contactName === null) {
+        contactId = null;
+      } else if (params.contactName) {
+        const contact = getOrCreateContact(params.contactName);
+        contactId = contact.id;
+      }
+
+      const recurring = updateRecurringRepo({
+        id: params.recurringTransactionId,
+        name: params.name,
+        amount: params.amount,
+        currency: params.currency,
+        type: params.type,
+        frequency: params.frequency,
+        contactId,
+        categoryId: params.categoryId,
+        projectId: params.projectId,
+        description: params.description,
+        notes: params.notes,
+        isActive: params.isActive,
       });
+
+      if (!recurring) {
+        return errorResponseFromUnknown(
+          new Error("Recurring transaction not found")
+        );
+      }
+      return successResponse(recurring);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -723,11 +880,13 @@ export class FinanceService {
     recurringTransactionId: string
   ): Promise<ApiResponse<{ success: boolean; deletedId: string }>> {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.DELETE_RECURRING_TRANSACTION,
-        { recurringTransactionId }
-      );
-      return successResponse(result);
+      const deleted = deleteRecurringRepo(recurringTransactionId);
+      if (!deleted) {
+        return errorResponseFromUnknown(
+          new Error("Recurring transaction not found")
+        );
+      }
+      return successResponse({ success: true, deletedId: recurringTransactionId });
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
@@ -757,26 +916,50 @@ export class FinanceService {
     }>
   > {
     try {
-      const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.CREATE_TRANSACTION_FROM_RECURRING,
-        params
+      const recurring = getRecurringTransactionById(params.recurringTransactionId);
+      if (!recurring) {
+        return errorResponseFromUnknown(
+          new Error("Recurring transaction not found")
+        );
+      }
+
+      const amount = params.amount ?? recurring.amount;
+      const amountINR = recurring.currency === "USD" ? amount * 83 : amount;
+      const dateStr = params.date ?? new Date().toISOString().split("T")[0];
+
+      const transaction = createTransactionRepo({
+        amount,
+        currency: recurring.currency,
+        amountINR,
+        type: recurring.type,
+        date: dateStr,
+        contactId: recurring.contactId,
+        categoryId: recurring.categoryId,
+        projectId: recurring.projectId,
+        description: recurring.description,
+        notes: params.notes ?? recurring.notes,
+        isRecurring: true,
+        recurringGroupId: recurring.id,
+      });
+
+      // Update the recurring transaction's lastCreatedAt and nextDueDate
+      const updatedRecurring = markRecurringTransactionCreated(
+        recurring.id,
+        new Date(dateStr)
       );
+
       return successResponse({
         transaction: {
-          ...result.transaction,
-          date: new Date(result.transaction.date),
+          id: transaction.id,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          type: transaction.type,
+          date: transaction.date,
+          contactName: recurring.contactName,
+          categoryName: recurring.categoryName,
+          projectName: recurring.projectName,
         },
-        recurringTransaction: {
-          ...result.recurringTransaction,
-          lastCreatedAt: result.recurringTransaction.lastCreatedAt
-            ? new Date(result.recurringTransaction.lastCreatedAt)
-            : undefined,
-          nextDueDate: result.recurringTransaction.nextDueDate
-            ? new Date(result.recurringTransaction.nextDueDate)
-            : undefined,
-          createdAt: new Date(result.recurringTransaction.createdAt),
-          updatedAt: new Date(result.recurringTransaction.updatedAt),
-        },
+        recurringTransaction: updatedRecurring!,
       });
     } catch (error) {
       return errorResponseFromUnknown(error);
@@ -785,6 +968,7 @@ export class FinanceService {
 
   /**
    * Suggest recurring transactions based on transaction history
+   * Uses Back4App Cloud Function for AI analysis
    */
   static async suggestRecurringTransactions(): Promise<
     ApiResponse<{
@@ -807,12 +991,84 @@ export class FinanceService {
     }>
   > {
     try {
+      // Get recent transactions for AI analysis
+      const transactions = getTransactionsRepo({ limit: 200 });
+      const contacts = getAllContacts();
+      const categories = getAllCategories();
+      const projects = getAllProjects();
+
       const result = await Parse.Cloud.run(
-        CLOUD_FUNCTIONS.SUGGEST_RECURRING_TRANSACTIONS
+        CLOUD_FUNCTIONS.SUGGEST_RECURRING_TRANSACTIONS,
+        {
+          transactions: transactions.transactions.map((t) => ({
+            amount: t.amount,
+            currency: t.currency,
+            type: t.type,
+            date:
+              typeof t.date === "string"
+                ? t.date
+                : t.date.toISOString(),
+            contactName: t.contactName,
+            categoryId: t.categoryId,
+            categoryName: t.categoryName,
+            projectId: t.projectId,
+            projectName: t.projectName,
+          })),
+          context: {
+            contacts: contacts.map((c) => ({ id: c.id, name: c.name })),
+            categories: categories.map((c) => ({
+              id: c.id,
+              name: c.name,
+              type: c.type,
+            })),
+            projects: projects.map((p) => ({ id: p.id, name: p.name })),
+          },
+        }
       );
       return successResponse(result);
     } catch (error) {
       return errorResponseFromUnknown(error);
     }
+  }
+
+  // ============================================
+  // Legacy methods (kept for compatibility, redirect to Back4App)
+  // ============================================
+
+  /**
+   * Parse raw text into transaction data using AI
+   * @deprecated Use parseTransactionInput instead
+   */
+  static async parseTransaction(
+    text: string,
+    source?: string
+  ): Promise<ApiResponse<any>> {
+    return this.parseTransactionInput({ text, source });
+  }
+
+  /**
+   * Parse bulk transactions from text
+   * @deprecated Use parseTransactionInput instead
+   */
+  static async parseBulkTransactions(
+    text: string,
+    source?: string
+  ): Promise<ApiResponse<any>> {
+    return this.parseTransactionInput({ text, source });
+  }
+
+  /**
+   * Parse transactions from an image
+   * @deprecated Use parseTransactionInput instead
+   */
+  static async parseTransactionFromImage(
+    imageBase64: string,
+    mediaType?: string,
+    source?: string
+  ): Promise<ApiResponse<any>> {
+    return this.parseTransactionInput({
+      images: [{ base64: imageBase64, mediaType: mediaType ?? "image/jpeg" }],
+      source,
+    });
   }
 }

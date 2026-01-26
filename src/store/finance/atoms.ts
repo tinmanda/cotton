@@ -1,68 +1,37 @@
-import { atom } from "jotai";
-import { atomWithStorage } from "jotai/utils";
-import { IContact, ICategory, IProject } from "@/types";
-import { STORAGE_KEYS, createAtomStorageAdapter } from "@/lib/storage";
-
 /**
- * Contacts atom with AsyncStorage persistence
- * Caches the contacts list to avoid repeated API calls
+ * Finance atoms - Re-exported from data layer
+ *
+ * In the local-first architecture, atoms are defined in @/data/atoms
+ * and synced with SQLite. This file re-exports them for compatibility.
  */
-export const contactsAtom = atomWithStorage<IContact[]>(
-  STORAGE_KEYS.CONTACTS,
-  [],
-  createAtomStorageAdapter<IContact[]>()
-);
 
-/**
- * Contacts loading state
- */
-export const contactsLoadingAtom = atom<boolean>(false);
+export {
+  // Categories
+  categoriesAtom,
+  categoriesLoadingAtom,
+  loadCategoriesAtom,
 
-/**
- * Contacts last fetched timestamp
- * Used to determine if cache is stale
- */
-export const contactsTimestampAtom = atom<number>(0);
+  // Projects
+  projectsAtom,
+  projectsLoadingAtom,
+  loadProjectsAtom,
 
-/**
- * Categories atom with AsyncStorage persistence
- */
-export const categoriesAtom = atomWithStorage<ICategory[]>(
-  STORAGE_KEYS.CATEGORIES,
-  [],
-  createAtomStorageAdapter<ICategory[]>()
-);
+  // Contacts
+  contactsAtom,
+  contactsLoadingAtom,
+  loadContactsAtom,
 
-/**
- * Categories loading state
- */
-export const categoriesLoadingAtom = atom<boolean>(false);
+  // Recurring Transactions
+  recurringTransactionsAtom,
+  recurringTransactionsLoadingAtom,
+  loadRecurringTransactionsAtom,
 
-/**
- * Categories last fetched timestamp
- */
-export const categoriesTimestampAtom = atom<number>(0);
+  // Dashboard
+  dashboardTotalsAtom,
+  recentTransactionsAtom,
+  loadRecentTransactionsAtom,
+} from "@/data/atoms";
 
-/**
- * Projects atom with AsyncStorage persistence
- */
-export const projectsAtom = atomWithStorage<IProject[]>(
-  STORAGE_KEYS.PROJECTS,
-  [],
-  createAtomStorageAdapter<IProject[]>()
-);
-
-/**
- * Projects loading state
- */
-export const projectsLoadingAtom = atom<boolean>(false);
-
-/**
- * Projects last fetched timestamp
- */
-export const projectsTimestampAtom = atom<number>(0);
-
-/**
- * Cache TTL in milliseconds (5 minutes)
- */
-export const CACHE_TTL = 5 * 60 * 1000;
+// Note: CACHE_TTL is no longer needed in local-first architecture
+// Data is always fresh from SQLite
+export const CACHE_TTL = 0;

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
@@ -19,8 +19,9 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastContainer } from "@/components/ui/Toast";
 import { useAuthInit } from "@/hooks/useAuthInit";
 import { initializeParse } from "@/config/parse";
+import { initDatabase } from "@/data";
 
-// Initialize Parse
+// Initialize Parse (still needed for AI cloud functions)
 initializeParse();
 
 SplashScreen.preventAutoHideAsync();
@@ -29,13 +30,32 @@ SplashScreen.preventAutoHideAsync();
  * Inner layout component that has access to Jotai context
  */
 function RootLayoutInner() {
+  const [isDbReady, setIsDbReady] = useState(false);
+
   // Initialize auth once at app startup
   useAuthInit();
 
-  // Hide splash screen after initialization
+  // Initialize SQLite database
   useEffect(() => {
-    SplashScreen.hideAsync();
+    const init = async () => {
+      try {
+        await initDatabase();
+        setIsDbReady(true);
+      } catch (error) {
+        console.error("Failed to initialize database:", error);
+        // Still allow app to load, but data may not work
+        setIsDbReady(true);
+      }
+    };
+    init();
   }, []);
+
+  // Hide splash screen after database is initialized
+  useEffect(() => {
+    if (isDbReady) {
+      SplashScreen.hideAsync();
+    }
+  }, [isDbReady]);
 
   return (
     <>
