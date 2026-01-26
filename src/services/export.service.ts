@@ -10,7 +10,7 @@ export interface ExportData {
   metadata: {
     version: string;
     exportDate: string;
-    exportedFrom: "parse-server";
+    exportedFrom: "sqlite" | "parse-server";
     schemaVersion: 1;
   };
   categories: ExportCategory[];
@@ -109,7 +109,8 @@ interface ExportRecurringTransaction {
 }
 
 /**
- * Service for exporting and importing data
+ * Service for exporting data from local SQLite database
+ * The export format is compatible with the import service for backup/restore
  */
 export class ExportService {
   /**
@@ -156,7 +157,7 @@ export class ExportService {
         metadata: {
           version: "1.0.0",
           exportDate: new Date().toISOString(),
-          exportedFrom: "parse-server",
+          exportedFrom: "sqlite",
           schemaVersion: 1,
         },
         categories: categoriesResult.data.map((c) => ({
