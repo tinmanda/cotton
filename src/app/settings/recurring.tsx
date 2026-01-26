@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { COLORS } from "@/constants";
 import { FinanceService } from "@/services";

@@ -1,7 +1,7 @@
 {
   "name": "cotton",
   "main": "expo-router/entry",
-  "version": "1.0.41",
+  "version": "1.0.42",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
