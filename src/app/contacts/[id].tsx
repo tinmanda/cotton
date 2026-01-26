@@ -51,40 +51,29 @@ export default function ContactDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [transactions, setTransactions] = useState<ITransaction[]>([]);
-  const [hasMore, setHasMore] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
 
   const loadTransactions = useCallback(
-    async (showLoader = true, loadMore = false) => {
+    async (showLoader = true) => {
       if (!id) return;
-      if (showLoader && !loadMore) setIsLoading(true);
-      if (loadMore) setIsLoadingMore(true);
+      if (showLoader) setIsLoading(true);
 
       try {
         const transactionsResult = await FinanceService.getTransactions({
           contactId: id,
-          limit: 20,
-          skip: loadMore ? transactions.length : 0,
         });
 
         if (transactionsResult.success) {
-          if (loadMore) {
-            setTransactions((prev) => [...prev, ...transactionsResult.data.transactions]);
-          } else {
-            setTransactions(transactionsResult.data.transactions);
-          }
-          setHasMore(transactionsResult.data.hasMore);
+          setTransactions(transactionsResult.data.transactions);
         }
       } catch (error) {
         showError("Failed to load transactions");
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
-        setIsLoadingMore(false);
       }
     },
-    [id, transactions.length, showError]
+    [id, showError]
   );
 
   // Load contacts (from cache) and transactions on mount
@@ -109,12 +98,6 @@ export default function ContactDetailScreen() {
     await fetchContacts(true); // Force refresh contacts
     await loadTransactions(false);
   }, [fetchContacts, loadTransactions]);
-
-  const loadMoreTransactions = useCallback(() => {
-    if (!isLoadingMore && hasMore) {
-      loadTransactions(false, true);
-    }
-  }, [isLoadingMore, hasMore, loadTransactions]);
 
   const handleEditSaved = (updatedContact: IContact) => {
     setEditModalVisible(false);
@@ -254,15 +237,6 @@ export default function ContactDetailScreen() {
             <Text className="text-sm text-gray-500 mt-3">No transactions yet</Text>
           </View>
         }
-        ListFooterComponent={
-          isLoadingMore ? (
-            <View className="py-4">
-              <ActivityIndicator size="small" color={COLORS.primary} />
-            </View>
-          ) : null
-        }
-        onEndReached={loadMoreTransactions}
-        onEndReachedThreshold={0.3}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}

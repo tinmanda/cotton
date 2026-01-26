@@ -54,7 +54,7 @@ export default function FlaggedTransactionsScreen() {
     async (showLoader = true) => {
       if (showLoader) setIsLoading(true);
       try {
-        const result = await FinanceService.getFlaggedTransactions({ limit: 100 });
+        const result = await FinanceService.getFlaggedTransactions();
         if (result.success) {
           setTransactions(result.data.transactions);
           setDuplicateTransactions(result.data.duplicateTransactions);

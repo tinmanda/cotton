@@ -182,9 +182,7 @@ export default function TransactionsScreen() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [transactions, setTransactions] = useState<ITransaction[]>([]);
-  const [hasMore, setHasMore] = useState(true);
   const [totals, setTotals] = useState({ income: 0, expenses: 0 });
   const [filterModalVisible, setFilterModalVisible] = useState(false);
 
@@ -220,9 +218,8 @@ export default function TransactionsScreen() {
   }, [filters, urlContactId, urlProjectId]);
 
   const loadTransactions = useCallback(
-    async (reset = true, showLoader = true) => {
-      if (showLoader && reset) setIsLoading(true);
-      if (!reset) setIsLoadingMore(true);
+    async (showLoader = true) => {
+      if (showLoader) setIsLoading(true);
 
       try {
         const { startDate, endDate } = getTimePeriodDates(
@@ -238,39 +235,31 @@ export default function TransactionsScreen() {
           categoryId: filters.categoryId || undefined,
           startDate: startDate?.toISOString(),
           endDate: endDate?.toISOString(),
-          limit: 30,
-          skip: reset ? 0 : transactions.length,
         });
 
         if (result.success) {
-          if (reset) {
-            setTransactions(result.data.transactions);
-            setTotals({
-              income: result.data.totalIncome,
-              expenses: result.data.totalExpenses,
-            });
-            if (result.data.transactions.length > 0) {
-              if (filters.projectId) {
-                setProjectName(result.data.transactions[0].projectName || null);
-              }
-              if (filters.contactId && !urlContactName) {
-                setContactName(result.data.transactions[0].contactName || null);
-              }
+          setTransactions(result.data.transactions);
+          setTotals({
+            income: result.data.totalIncome,
+            expenses: result.data.totalExpenses,
+          });
+          if (result.data.transactions.length > 0) {
+            if (filters.projectId) {
+              setProjectName(result.data.transactions[0].projectName || null);
             }
-          } else {
-            setTransactions((prev) => [...prev, ...result.data.transactions]);
+            if (filters.contactId && !urlContactName) {
+              setContactName(result.data.transactions[0].contactName || null);
+            }
           }
-          setHasMore(result.data.hasMore);
         } else {
           showError(result.error.message);
         }
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
-        setIsLoadingMore(false);
       }
     },
-    [filters, urlContactName, transactions.length, showError]
+    [filters, urlContactName, showError]
   );
 
   useFocusEffect(
@@ -281,14 +270,8 @@ export default function TransactionsScreen() {
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    loadTransactions(true, false);
+    loadTransactions(false);
   }, [loadTransactions]);
-
-  const onEndReached = useCallback(() => {
-    if (hasMore && !isLoadingMore) {
-      loadTransactions(false, false);
-    }
-  }, [hasMore, isLoadingMore, loadTransactions]);
 
   const handleTypeChange = (type: FilterType) => {
     setFilters((prev) => ({ ...prev, type }));
@@ -505,15 +488,6 @@ export default function TransactionsScreen() {
               onRefresh={onRefresh}
               colors={[COLORS.primary]}
             />
-          }
-          onEndReached={onEndReached}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={
-            isLoadingMore ? (
-              <View className="py-4">
-                <ActivityIndicator size="small" color={COLORS.primary} />
-              </View>
-            ) : null
           }
           contentContainerStyle={{ paddingBottom: 20 }}
           showsVerticalScrollIndicator={false}

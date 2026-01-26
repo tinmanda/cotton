@@ -163,7 +163,7 @@ export const getTransactions = (
   const totalIncome = totalsResult?.total_income ?? 0;
   const totalExpenses = totalsResult?.total_expenses ?? 0;
 
-  // Get paginated transactions
+  // Get transactions (with optional pagination for UI screens)
   let query = `
     SELECT t.*,
            c.name as contact_name,
@@ -177,11 +177,14 @@ export const getTransactions = (
     ORDER BY t.date DESC, t.created_at DESC
   `;
 
-  const limit = filters?.limit ?? 30;
+  // Only apply pagination if limit is specified (local DB doesn't need it for most cases)
+  const limit = filters?.limit;
   const skip = filters?.skip ?? 0;
 
-  query += ` LIMIT ? OFFSET ?`;
-  params.push(limit, skip);
+  if (limit !== undefined) {
+    query += ` LIMIT ? OFFSET ?`;
+    params.push(limit, skip);
+  }
 
   const rows = db.getAllSync<TransactionRow>(query, params);
   const transactions = rows.map(transformRow);
@@ -191,7 +194,7 @@ export const getTransactions = (
     total,
     totalIncome,
     totalExpenses,
-    hasMore: skip + transactions.length < total,
+    hasMore: limit !== undefined ? skip + transactions.length < total : false,
   };
 };
 
@@ -418,7 +421,7 @@ export const getFlaggedTransactions = (params?: {
   total: number;
   hasMore: boolean;
 } => {
-  const limit = params?.limit ?? 20;
+  const limit = params?.limit;
   const skip = params?.skip ?? 0;
 
   const totalResult = db.getFirstSync<{ count: number }>(
@@ -426,8 +429,7 @@ export const getFlaggedTransactions = (params?: {
   );
   const total = totalResult?.count ?? 0;
 
-  const rows = db.getAllSync<TransactionRow>(
-    `SELECT t.*,
+  let query = `SELECT t.*,
             c.name as contact_name,
             cat.name as category_name,
             p.name as project_name
@@ -436,17 +438,22 @@ export const getFlaggedTransactions = (params?: {
      LEFT JOIN categories cat ON t.category_id = cat.id
      LEFT JOIN projects p ON t.project_id = p.id
      WHERE t.needs_review = 1
-     ORDER BY t.created_at DESC
-     LIMIT ? OFFSET ?;`,
-    [limit, skip]
-  );
+     ORDER BY t.created_at DESC`;
+
+  const queryParams: (number | string)[] = [];
+  if (limit !== undefined) {
+    query += ` LIMIT ? OFFSET ?`;
+    queryParams.push(limit, skip);
+  }
+
+  const rows = db.getAllSync<TransactionRow>(query, queryParams);
 
   const transactions = rows.map(transformRow);
 
   return {
     transactions,
     total,
-    hasMore: skip + transactions.length < total,
+    hasMore: limit !== undefined ? skip + transactions.length < total : false,
   };
 };
 

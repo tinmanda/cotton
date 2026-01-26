@@ -131,7 +131,7 @@ export class ExportService {
         FinanceService.getCategories(),
         FinanceService.getProjects(),
         FinanceService.getContacts(),
-        FinanceService.getTransactions({ limit: 10000 }), // Get all transactions
+        FinanceService.getTransactions({}), // Get all transactions (no limit for local DB)
         FinanceService.getRecurringTransactions(),
       ]);
 
@@ -302,7 +302,7 @@ export class ExportService {
         FinanceService.getCategories(),
         FinanceService.getProjects(),
         FinanceService.getContacts(),
-        FinanceService.getTransactions({ limit: 1 }), // Just to get total count
+        FinanceService.getTransactions({ limit: 1 }), // Just to get counts
         FinanceService.getRecurringTransactions(),
       ]);
 

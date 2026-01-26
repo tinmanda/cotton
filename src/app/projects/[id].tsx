@@ -237,7 +237,6 @@ export default function ProjectDetailScreen() {
       // Fetch all transactions for this project
       const result = await FinanceService.getTransactions({
         projectId: id,
-        limit: 10000, // Get all transactions
       });
 
       if (!result.success) {
