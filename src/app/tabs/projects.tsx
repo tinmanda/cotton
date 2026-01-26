@@ -12,11 +12,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter } from "expo-router";
 import { COLORS, buildRoute } from "@/constants";
 import { FinanceService } from "@/services";
 import { IProject, ProjectType } from "@/types";
 import { useToast } from "@/hooks/useToast";
+import { useProjects } from "@/store";
 
 const PROJECT_COLORS = [
   "#3B82F6", "#8B5CF6", "#EC4899", "#EF4444", "#F59E0B",
@@ -37,13 +38,15 @@ function formatAmount(amount: number): string {
 export default function ProjectsScreen() {
   const router = useRouter();
   const { showSuccess, showError } = useToast();
-  const [isLoading, setIsLoading] = useState(true);
+  const { projects, isLoading: projectsLoading, fetchProjects, addProject, updateProject } = useProjects();
+  const [isLoadingSummaries, setIsLoadingSummaries] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [projects, setProjects] = useState<IProject[]>([]);
   const [projectSummaries, setProjectSummaries] = useState<Record<string, { income: number; expenses: number; net: number }>>({});
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [editingProject, setEditingProject] = useState<IProject | undefined>();
+
+  const isLoading = projectsLoading || isLoadingSummaries;
 
   const openCreateModal = () => {
     setModalMode("create");
@@ -57,20 +60,9 @@ export default function ProjectsScreen() {
     setModalVisible(true);
   };
 
-  const loadProjects = useCallback(async (showLoader = true) => {
-    if (showLoader) setIsLoading(true);
+  const loadSummaries = useCallback(async () => {
     try {
-      const [projectsResult, dashboardResult] = await Promise.all([
-        FinanceService.getProjects(),
-        FinanceService.getDashboard(),
-      ]);
-
-      if (projectsResult.success) {
-        setProjects(projectsResult.data);
-      } else {
-        showError(projectsResult.error.message);
-      }
-
+      const dashboardResult = await FinanceService.getDashboard();
       if (dashboardResult.success && dashboardResult.data.projectSummaries) {
         const summaries: Record<string, { income: number; expenses: number; net: number }> = {};
         for (const ps of dashboardResult.data.projectSummaries) {
@@ -79,21 +71,33 @@ export default function ProjectsScreen() {
         setProjectSummaries(summaries);
       }
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setIsLoadingSummaries(false);
     }
-  }, [showError]);
+  }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadProjects();
-    }, [loadProjects])
-  );
+  // Load projects on mount (will use cache if valid)
+  useEffect(() => {
+    const load = async () => {
+      const result = await fetchProjects();
+      if (!result.success && "error" in result) {
+        showError(result.error.message);
+      }
+      // Always load summaries (these are more volatile)
+      await loadSummaries();
+    };
+    load();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    loadProjects(false);
-  }, [loadProjects]);
+    setIsLoadingSummaries(true);
+    const result = await fetchProjects(true); // Force refresh
+    if (!result.success && "error" in result) {
+      showError(result.error.message);
+    }
+    await loadSummaries();
+    setIsRefreshing(false);
+  }, [fetchProjects, loadSummaries, showError]);
 
   if (isLoading) {
     return (

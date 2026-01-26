@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -13,10 +13,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { COLORS } from "@/constants";
 import { FinanceService } from "@/services";
+import { useCategories, useProjects, useContacts } from "@/store";
 import {
   IRecurringTransaction,
   ICategory,
@@ -88,12 +89,15 @@ function getDueStatus(nextDueDate?: Date): {
 export default function RecurringTransactionsScreen() {
   const router = useRouter();
   const { showSuccess, showError } = useToast();
+
+  // Use cached data from Jotai store
+  const { categories, fetchCategories } = useCategories();
+  const { projects, fetchProjects } = useProjects();
+  const { contacts, fetchContacts } = useContacts();
+
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [recurringTransactions, setRecurringTransactions] = useState<IRecurringTransaction[]>([]);
-  const [categories, setCategories] = useState<ICategory[]>([]);
-  const [projects, setProjects] = useState<IProject[]>([]);
-  const [contacts, setContacts] = useState<IContact[]>([]);
 
   // Modal states
   const [addEditModalVisible, setAddEditModalVisible] = useState(false);
@@ -109,14 +113,15 @@ export default function RecurringTransactionsScreen() {
   // Tab state (expenses vs income)
   const [activeTab, setActiveTab] = useState<TransactionType>("expense");
 
-  const loadData = useCallback(async (showLoader = true) => {
+  const loadData = useCallback(async (showLoader = true, forceRefresh = false) => {
     if (showLoader) setIsLoading(true);
     try {
-      const [rtResult, catResult, projResult, contactsResult] = await Promise.all([
+      // Fetch recurring transactions (not cached) + reference data (cached)
+      const [rtResult] = await Promise.all([
         FinanceService.getRecurringTransactions(),
-        FinanceService.getCategories(),
-        FinanceService.getProjects(),
-        FinanceService.getContacts(),
+        fetchCategories(forceRefresh),
+        fetchProjects(forceRefresh),
+        fetchContacts(forceRefresh),
       ]);
 
       if (rtResult.success) {
@@ -124,33 +129,20 @@ export default function RecurringTransactionsScreen() {
       } else {
         showError(rtResult.error.message);
       }
-
-      if (catResult.success) {
-        setCategories(catResult.data);
-      }
-
-      if (projResult.success) {
-        setProjects(projResult.data);
-      }
-
-      if (contactsResult.success) {
-        setContacts(contactsResult.data);
-      }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [showError]);
+  }, [showError, fetchCategories, fetchProjects, fetchContacts]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [loadData])
-  );
+  // Load data on mount
+  useEffect(() => {
+    loadData();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    loadData(false);
+    loadData(false, true); // Force refresh all data
   }, [loadData]);
 
   const filteredItems = recurringTransactions.filter((rt) => rt.type === activeTab);

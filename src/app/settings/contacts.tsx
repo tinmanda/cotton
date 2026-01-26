@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,11 +12,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter } from "expo-router";
 import { COLORS, buildRoute } from "@/constants";
-import { FinanceService } from "@/services";
 import { IContact } from "@/types";
 import { useToast } from "@/hooks/useToast";
+import { useContacts } from "@/store";
 
 type FilterType = "all" | "revenue" | "expense";
 type SortType = "amount_desc" | "amount_asc" | "name_asc" | "name_desc";
@@ -53,43 +53,31 @@ function formatAmount(amount: number, currency: string = "INR"): string {
 export default function ContactsScreen() {
   const router = useRouter();
   const { showError } = useToast();
-  const [isLoading, setIsLoading] = useState(true);
+  const { contacts, isLoading, fetchContacts } = useContacts();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [contacts, setContacts] = useState<IContact[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [activeSort, setActiveSort] = useState<SortType>("amount_desc");
 
-  const loadContacts = useCallback(
-    async (showLoader = true) => {
-      if (showLoader) setIsLoading(true);
-      try {
-        const result = await FinanceService.getContacts({
-          search: searchQuery || undefined,
-        });
-        if (result.success) {
-          setContacts(result.data);
-        } else {
-          showError(result.error.message);
-        }
-      } finally {
-        setIsLoading(false);
-        setIsRefreshing(false);
+  // Load contacts on mount (will use cache if valid)
+  useEffect(() => {
+    const load = async () => {
+      const result = await fetchContacts();
+      if (!result.success && "error" in result) {
+        showError(result.error.message);
       }
-    },
-    [searchQuery, showError]
-  );
+    };
+    load();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useFocusEffect(
-    useCallback(() => {
-      loadContacts();
-    }, [loadContacts])
-  );
-
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    loadContacts(false);
-  }, [loadContacts]);
+    const result = await fetchContacts(true); // Force refresh
+    if (!result.success && "error" in result) {
+      showError(result.error.message);
+    }
+    setIsRefreshing(false);
+  }, [fetchContacts, showError]);
 
   // Filter and sort contacts
   const processedContacts = useMemo(() => {

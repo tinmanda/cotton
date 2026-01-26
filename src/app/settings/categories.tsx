@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,45 +10,38 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter } from "expo-router";
 import { COLORS } from "@/constants";
-import { FinanceService } from "@/services";
 import { ICategory, TransactionType } from "@/types";
 import { useToast } from "@/hooks/useToast";
+import { useCategories } from "@/store";
 
 export default function CategoriesScreen() {
   const router = useRouter();
   const { showError } = useToast();
-  const [isLoading, setIsLoading] = useState(true);
+  const { categories, isLoading, fetchCategories } = useCategories();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [categories, setCategories] = useState<ICategory[]>([]);
   const [filterType, setFilterType] = useState<TransactionType | "all">("all");
 
-  const loadCategories = useCallback(async (showLoader = true) => {
-    if (showLoader) setIsLoading(true);
-    try {
-      const result = await FinanceService.getCategories();
-      if (result.success) {
-        setCategories(result.data);
-      } else {
+  // Load categories on mount (will use cache if valid)
+  useEffect(() => {
+    const load = async () => {
+      const result = await fetchCategories();
+      if (!result.success && "error" in result) {
         showError(result.error.message);
       }
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [showError]);
+    };
+    load();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useFocusEffect(
-    useCallback(() => {
-      loadCategories();
-    }, [loadCategories])
-  );
-
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    loadCategories(false);
-  }, [loadCategories]);
+    const result = await fetchCategories(true); // Force refresh
+    if (!result.success && "error" in result) {
+      showError(result.error.message);
+    }
+    setIsRefreshing(false);
+  }, [fetchCategories, showError]);
 
   const filteredCategories =
     filterType === "all"

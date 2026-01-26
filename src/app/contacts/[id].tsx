@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -13,11 +13,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Lucide } from "@react-native-vector-icons/lucide";
-import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { COLORS, buildRoute } from "@/constants";
 import { FinanceService } from "@/services";
 import { IContact, ITransaction } from "@/types";
 import { useToast } from "@/hooks/useToast";
+import { useContacts } from "@/store";
 
 function formatAmount(amount: number, currency: string = "INR"): string {
   if (currency === "USD") {
@@ -38,42 +39,34 @@ export default function ContactDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { showSuccess, showError } = useToast();
+
+  // Use cached contacts from Jotai store
+  const { contacts, fetchContacts, updateContact: updateContactInStore, removeContact } = useContacts();
+
+  // Find contact from cached data
+  const contact = useMemo(() => {
+    return contacts.find((c) => c.id === id) || null;
+  }, [contacts, id]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [contact, setContact] = useState<IContact | null>(null);
   const [transactions, setTransactions] = useState<ITransaction[]>([]);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
 
-  const loadData = useCallback(
+  const loadTransactions = useCallback(
     async (showLoader = true, loadMore = false) => {
       if (!id) return;
       if (showLoader && !loadMore) setIsLoading(true);
       if (loadMore) setIsLoadingMore(true);
 
       try {
-        // Load contact and transactions
-        const [contactsResult, transactionsResult] = await Promise.all([
-          FinanceService.getContacts({}),
-          FinanceService.getTransactions({
-            contactId: id,
-            limit: 20,
-            skip: loadMore ? transactions.length : 0,
-          }),
-        ]);
-
-        // Find the specific contact by ID
-        if (contactsResult.success) {
-          const foundContact = contactsResult.data.find((c) => c.id === id);
-          if (foundContact) {
-            setContact(foundContact);
-          } else {
-            showError("Contact not found");
-            router.back();
-            return;
-          }
-        }
+        const transactionsResult = await FinanceService.getTransactions({
+          contactId: id,
+          limit: 20,
+          skip: loadMore ? transactions.length : 0,
+        });
 
         if (transactionsResult.success) {
           if (loadMore) {
@@ -84,7 +77,7 @@ export default function ContactDetailScreen() {
           setHasMore(transactionsResult.data.hasMore);
         }
       } catch (error) {
-        showError("Failed to load contact details");
+        showError("Failed to load transactions");
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
@@ -94,31 +87,44 @@ export default function ContactDetailScreen() {
     [id, transactions.length, showError]
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  );
+  // Load contacts (from cache) and transactions on mount
+  useEffect(() => {
+    const load = async () => {
+      await fetchContacts(); // Will use cache if valid
+      await loadTransactions();
+    };
+    load();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onRefresh = useCallback(() => {
+  // Handle case where contact is not found after loading
+  useEffect(() => {
+    if (!isLoading && contacts.length > 0 && !contact) {
+      showError("Contact not found");
+      router.back();
+    }
+  }, [isLoading, contacts.length, contact, showError, router]);
+
+  const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    loadData(false);
-  }, [loadData]);
+    await fetchContacts(true); // Force refresh contacts
+    await loadTransactions(false);
+  }, [fetchContacts, loadTransactions]);
 
   const loadMoreTransactions = useCallback(() => {
     if (!isLoadingMore && hasMore) {
-      loadData(false, true);
+      loadTransactions(false, true);
     }
-  }, [isLoadingMore, hasMore, loadData]);
+  }, [isLoadingMore, hasMore, loadTransactions]);
 
-  const handleEditSaved = () => {
+  const handleEditSaved = (updatedContact: IContact) => {
     setEditModalVisible(false);
-    loadData();
+    updateContactInStore(updatedContact); // Update in Jotai cache
     showSuccess("Contact updated");
   };
 
   const handleDeleted = () => {
     setEditModalVisible(false);
+    if (id) removeContact(id); // Remove from Jotai cache
     router.back();
   };
 
@@ -341,7 +347,7 @@ function ContactEditModal({
   visible: boolean;
   contact: IContact;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (updatedContact: IContact) => void;
   onDeleted: () => void;
 }) {
   const { showError, showSuccess } = useToast();
@@ -372,7 +378,15 @@ function ContactEditModal({
       });
 
       if (result.success) {
-        onSaved();
+        // Pass the updated contact back
+        const updatedContact: IContact = {
+          ...contact,
+          name: name.trim(),
+          email: email.trim() || undefined,
+          phone: phone.trim() || undefined,
+          company: company.trim() || undefined,
+        };
+        onSaved(updatedContact);
       } else {
         showError(result.error.message);
       }

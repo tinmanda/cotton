@@ -30,6 +30,10 @@ export const STORAGE_KEYS = {
   USER: "user",
   AUTH_TOKEN: "authToken",
   ONBOARDING_COMPLETED: "onboardingCompleted",
+  // Finance data cache
+  CONTACTS: "contacts",
+  CATEGORIES: "categories",
+  PROJECTS: "projects",
 } as const;
 
 /**
