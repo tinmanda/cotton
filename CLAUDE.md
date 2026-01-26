@@ -6,9 +6,9 @@ Cotton is a React Native boilerplate project built with Expo, TypeScript, and Ba
 
 ## Local-First Migration (Branch: `local-first`)
 
-**Status:** In Progress
+**Status:** Implemented (Ready for Testing)
 
-We are migrating from Back4App Parse Server to a local-first architecture using **expo-sqlite** for privacy reasons.
+We have migrated from Back4App Parse Server to a local-first architecture using **expo-sqlite** for privacy reasons.
 
 ### Why Local-First?
 - **Privacy as a feature**: User financial data never leaves their device
@@ -60,13 +60,16 @@ src/data/
 ```
 
 ### Migration Checklist
-- [x] Install expo-sqlite
-- [ ] Create database structure and migrations
-- [ ] Create repositories for all entities
-- [ ] Update Jotai atoms to load from SQLite
-- [ ] Update FinanceService (keep AI calls to Back4App)
-- [ ] Test all screens
-- [ ] Add iCloud/Google Drive backup (later)
+- [x] Install expo-sqlite and expo-file-system
+- [x] Create database structure and migrations
+- [x] Create repositories for all entities (categories, projects, contacts, transactions, recurring)
+- [x] Update Jotai atoms to load from SQLite
+- [x] Update FinanceService (CRUD uses SQLite, AI uses Back4App Cloud Functions)
+- [x] Update store/finance hooks to use SQLite
+- [x] Verify screen compatibility with SQLite-based services
+- [ ] Manual testing of all screens
+- [ ] Manual data migration from Back4App (if needed)
+- [ ] Add iCloud/Google Drive backup (deferred to later)
 
 ## Critical Constraints
 
