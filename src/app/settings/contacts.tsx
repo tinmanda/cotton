@@ -21,11 +21,33 @@ import { useToast } from "@/hooks/useToast";
 type FilterType = "all" | "revenue" | "expense";
 type SortType = "amount" | "name_asc" | "name_desc";
 
-function formatAmount(amount: number): string {
-  if (amount >= 1000) {
-    return `₹${(amount / 1000).toFixed(1)}K`;
+function formatAmount(amount: number, currency: string = "INR"): string {
+  const isNegative = amount < 0;
+  const absAmount = Math.abs(amount);
+  const symbol = currency === "USD" ? "$" : "₹";
+
+  let formatted: string;
+  if (currency === "INR") {
+    // Indian format: K (thousands), L (lakhs)
+    if (absAmount >= 100000) {
+      formatted = `${symbol}${(absAmount / 100000).toFixed(1)}L`;
+    } else if (absAmount >= 1000) {
+      formatted = `${symbol}${(absAmount / 1000).toFixed(1)}K`;
+    } else {
+      formatted = `${symbol}${absAmount.toLocaleString("en-IN")}`;
+    }
+  } else {
+    // International format: K (thousands), M (millions)
+    if (absAmount >= 1000000) {
+      formatted = `${symbol}${(absAmount / 1000000).toFixed(1)}M`;
+    } else if (absAmount >= 1000) {
+      formatted = `${symbol}${(absAmount / 1000).toFixed(1)}K`;
+    } else {
+      formatted = `${symbol}${absAmount.toLocaleString("en-US")}`;
+    }
   }
-  return `₹${amount.toLocaleString("en-IN")}`;
+
+  return isNegative ? `-${formatted}` : formatted;
 }
 
 export default function ContactsScreen() {
