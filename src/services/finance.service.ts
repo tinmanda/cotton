@@ -1020,8 +1020,13 @@ export class FinanceService {
     }>
   > {
     try {
-      // Get ALL transactions for AI analysis (no limit - local SQLite is fast)
-      const transactions = getTransactionsRepo();
+      // Get transactions from last 15 months for AI analysis
+      const fifteenMonthsAgo = new Date();
+      fifteenMonthsAgo.setMonth(fifteenMonthsAgo.getMonth() - 15);
+
+      const transactions = getTransactionsRepo({
+        startDate: fifteenMonthsAgo.toISOString(),
+      });
       const contacts = getAllContacts();
       const categories = getAllCategories();
       const projects = getAllProjects();

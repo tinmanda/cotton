@@ -3027,6 +3027,9 @@ Parse.Cloud.define("suggestRecurringTransactions", async (request) => {
 
   console.log(`[suggestRecurringTransactions] Analyzing ${txData.length} transactions, ${existingNames.length} existing recurring`);
 
+  // Get today's date for recency check
+  const today = new Date().toISOString().split("T")[0];
+
   const systemPrompt = `You are a financial analyst helping identify recurring transactions from transaction history.
 
 Analyze the transaction data and identify patterns that suggest recurring expenses or income:
@@ -3036,11 +3039,14 @@ Analyze the transaction data and identify patterns that suggest recurring expens
 
 For each pattern you identify, suggest a recurring transaction.
 
-IMPORTANT:
-- Only suggest items that appear at least 2+ times with a clear pattern
-- Prefer the most common amount if there's slight variation
-- Infer a good name for the recurring item (e.g., "AWS Subscription" not just "AWS")
-- Identify the frequency based on the dates (weekly ~7 days, monthly ~30 days, quarterly ~90 days, yearly ~365 days)
+CRITICAL RULES:
+1. Only suggest items that appear at least 2+ times with a clear pattern
+2. ONLY suggest patterns that are STILL ACTIVE - the most recent occurrence must be within the last 3 months from today (${today})
+3. DO NOT suggest patterns that stopped occurring more than 3 months ago (these are likely cancelled subscriptions)
+4. Prefer the most common amount if there's slight variation
+5. Infer a good name for the recurring item (e.g., "AWS Subscription" not just "AWS")
+6. Identify the frequency based on the dates (weekly ~7 days, monthly ~30 days, quarterly ~90 days, yearly ~365 days)
+7. For yearly subscriptions, ensure the pattern has occurred in the current or previous year
 
 Return a JSON object with this structure:
 {
@@ -3057,20 +3063,23 @@ Return a JSON object with this structure:
       "projectId": "project id if available",
       "projectName": "project name if available",
       "confidence": 0.9,
-      "reason": "Brief explanation of why this was identified"
+      "lastOccurrence": "YYYY-MM-DD (date of most recent transaction in this pattern)",
+      "reason": "Brief explanation including when the pattern was last seen"
     }
   ]
 }
 
-If no clear patterns are found, return: { "suggestions": [] }`;
+If no clear ACTIVE patterns are found, return: { "suggestions": [] }`;
 
-  const userMessage = `Here are the transactions from the last 6 months:
+  const userMessage = `Today's date: ${today}
+
+Here are the transactions from the last 15 months:
 
 ${JSON.stringify(txData, null, 2)}
 
 Already existing recurring items (avoid duplicates): ${existingNames.join(", ") || "none"}
 
-Please analyze and suggest recurring transactions.`;
+Please analyze and suggest ONLY recurring transactions that are still active (had activity in the last 3 months).`;
 
   try {
     const aiResponse = await callAnthropic(systemPrompt, userMessage);
