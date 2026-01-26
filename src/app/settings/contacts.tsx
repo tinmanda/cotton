@@ -18,13 +18,10 @@ import { FinanceService } from "@/services";
 import { IContact } from "@/types";
 import { useToast } from "@/hooks/useToast";
 
-type FilterType = "all" | "paid_to" | "received_from";
-type SortType = "transactions" | "spent" | "received" | "name";
+type FilterType = "all" | "revenue" | "expense";
+type SortType = "amount" | "name_asc" | "name_desc";
 
 function formatAmount(amount: number): string {
-  if (amount >= 100000) {
-    return `₹${(amount / 100000).toFixed(1)}L`;
-  }
   if (amount >= 1000) {
     return `₹${(amount / 1000).toFixed(1)}K`;
   }
@@ -39,7 +36,7 @@ export default function ContactsScreen() {
   const [contacts, setContacts] = useState<IContact[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
-  const [activeSort, setActiveSort] = useState<SortType>("transactions");
+  const [activeSort, setActiveSort] = useState<SortType>("amount");
 
   const loadContacts = useCallback(
     async (showLoader = true) => {
@@ -79,23 +76,25 @@ export default function ContactsScreen() {
     );
 
     // Apply filter
-    if (activeFilter === "paid_to") {
+    if (activeFilter === "expense") {
       filtered = filtered.filter((c) => (c.totalSpent || 0) > 0);
-    } else if (activeFilter === "received_from") {
+    } else if (activeFilter === "revenue") {
       filtered = filtered.filter((c) => (c.totalReceived || 0) > 0);
     }
 
     // Apply sort
     const sorted = [...filtered].sort((a, b) => {
       switch (activeSort) {
-        case "transactions":
-          return (b.transactionCount || 0) - (a.transactionCount || 0);
-        case "spent":
-          return (b.totalSpent || 0) - (a.totalSpent || 0);
-        case "received":
-          return (b.totalReceived || 0) - (a.totalReceived || 0);
-        case "name":
+        case "amount": {
+          // Sort by net amount (received - spent), highest first
+          const netA = (a.totalReceived || 0) - (a.totalSpent || 0);
+          const netB = (b.totalReceived || 0) - (b.totalSpent || 0);
+          return netB - netA;
+        }
+        case "name_asc":
           return a.name.localeCompare(b.name);
+        case "name_desc":
+          return b.name.localeCompare(a.name);
         default:
           return 0;
       }
@@ -108,22 +107,21 @@ export default function ContactsScreen() {
   const stats = useMemo(() => {
     const totalSpent = contacts.reduce((sum, c) => sum + (c.totalSpent || 0), 0);
     const totalReceived = contacts.reduce((sum, c) => sum + (c.totalReceived || 0), 0);
-    const paidToCount = contacts.filter((c) => (c.totalSpent || 0) > 0).length;
-    const receivedFromCount = contacts.filter((c) => (c.totalReceived || 0) > 0).length;
-    return { totalSpent, totalReceived, paidToCount, receivedFromCount };
+    const expenseCount = contacts.filter((c) => (c.totalSpent || 0) > 0).length;
+    const revenueCount = contacts.filter((c) => (c.totalReceived || 0) > 0).length;
+    return { totalSpent, totalReceived, expenseCount, revenueCount };
   }, [contacts]);
 
   const filters: { key: FilterType; label: string; count: number }[] = [
     { key: "all", label: "All", count: contacts.length },
-    { key: "paid_to", label: "Paid to", count: stats.paidToCount },
-    { key: "received_from", label: "Received from", count: stats.receivedFromCount },
+    { key: "revenue", label: "Revenue", count: stats.revenueCount },
+    { key: "expense", label: "Expense", count: stats.expenseCount },
   ];
 
   const sortOptions: { key: SortType; label: string; icon: string }[] = [
-    { key: "transactions", label: "Most active", icon: "arrow-up-down" },
-    { key: "spent", label: "Most spent", icon: "arrow-up-right" },
-    { key: "received", label: "Most received", icon: "arrow-down-left" },
-    { key: "name", label: "A-Z", icon: "arrow-down-a-z" },
+    { key: "amount", label: "Amount", icon: "arrow-up-down" },
+    { key: "name_asc", label: "A-Z", icon: "arrow-down-a-z" },
+    { key: "name_desc", label: "Z-A", icon: "arrow-up-a-z" },
   ];
 
   return (
@@ -264,7 +262,7 @@ export default function ContactsScreen() {
             {searchQuery
               ? "Try a different search term"
               : activeFilter !== "all"
-              ? "No contacts match this filter"
+              ? `No ${activeFilter} contacts found`
               : "Contacts are automatically created when you add transactions"}
           </Text>
         </View>
@@ -303,7 +301,6 @@ function ContactRow({
   const spent = contact.totalSpent || 0;
   const received = contact.totalReceived || 0;
   const netAmount = received - spent;
-  const hasActivity = spent > 0 || received > 0;
 
   // Determine the primary type of contact
   const isPrimarilyExpense = spent > received;
@@ -335,57 +332,40 @@ function ContactRow({
             }
           />
         </View>
-        <View className="flex-1 ml-3">
-          <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
-            {contact.name}
-          </Text>
-          <Text className="text-xs text-gray-500 mt-0.5">
-            {contact.transactionCount} transaction{contact.transactionCount !== 1 ? "s" : ""}
-          </Text>
+        <View className="flex-1 ml-3 mr-2">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-base font-semibold text-gray-900 flex-1 flex-shrink" numberOfLines={1}>
+              {contact.name}
+            </Text>
+            {netAmount !== 0 && (
+              <Text
+                className="text-sm font-bold flex-shrink-0 ml-2"
+                style={{ color: netAmount > 0 ? COLORS.success : COLORS.error }}
+              >
+                {netAmount > 0 ? "+" : ""}{formatAmount(netAmount)}
+              </Text>
+            )}
+          </View>
+          <View className="flex-row items-center mt-0.5">
+            <Text className="text-xs text-gray-500">
+              {contact.transactionCount} txn{contact.transactionCount !== 1 ? "s" : ""}
+            </Text>
+            {spent > 0 && (
+              <View className="flex-row items-center ml-2">
+                <Lucide name="arrow-up-right" size={10} color={COLORS.error} />
+                <Text className="text-xs text-error ml-0.5">{formatAmount(spent)}</Text>
+              </View>
+            )}
+            {received > 0 && (
+              <View className="flex-row items-center ml-2">
+                <Lucide name="arrow-down-left" size={10} color={COLORS.success} />
+                <Text className="text-xs text-success ml-0.5">{formatAmount(received)}</Text>
+              </View>
+            )}
+          </View>
         </View>
         <Lucide name="chevron-right" size={16} color={COLORS.gray300} />
       </View>
-
-      {/* Financial Summary */}
-      {hasActivity && (
-        <View className="flex-row items-center mt-3 pt-3 border-t border-gray-100">
-          {spent > 0 && (
-            <View className="flex-row items-center mr-4">
-              <Lucide name="arrow-up-right" size={12} color={COLORS.error} />
-              <Text className="text-xs font-medium text-error ml-1">
-                {formatAmount(spent)}
-              </Text>
-            </View>
-          )}
-          {received > 0 && (
-            <View className="flex-row items-center mr-4">
-              <Lucide name="arrow-down-left" size={12} color={COLORS.success} />
-              <Text className="text-xs font-medium text-success ml-1">
-                {formatAmount(received)}
-              </Text>
-            </View>
-          )}
-          {spent > 0 && received > 0 && (
-            <View className="flex-1 items-end">
-              <View
-                style={[
-                  styles.netBadge,
-                  netAmount >= 0 ? styles.netBadgePositive : styles.netBadgeNegative,
-                ]}
-                className="px-2 py-1 rounded-full"
-              >
-                <Text
-                  className={`text-xs font-semibold ${
-                    netAmount >= 0 ? "text-success" : "text-error"
-                  }`}
-                >
-                  Net: {netAmount >= 0 ? "+" : ""}{formatAmount(Math.abs(netAmount))}
-                </Text>
-              </View>
-            </View>
-          )}
-        </View>
-      )}
     </Pressable>
   );
 }
@@ -450,16 +430,5 @@ const styles = StyleSheet.create({
   },
   contactIconIncome: {
     backgroundColor: `${COLORS.success}15`,
-  },
-  netBadge: {
-    borderWidth: 1,
-  },
-  netBadgePositive: {
-    backgroundColor: `${COLORS.success}10`,
-    borderColor: `${COLORS.success}30`,
-  },
-  netBadgeNegative: {
-    backgroundColor: `${COLORS.error}10`,
-    borderColor: `${COLORS.error}30`,
   },
 });
