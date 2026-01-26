@@ -117,6 +117,11 @@ export default function ContactDetailScreen() {
     showSuccess("Contact updated");
   };
 
+  const handleDeleted = () => {
+    setEditModalVisible(false);
+    router.back();
+  };
+
   if (isLoading || !contact) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50">
@@ -269,6 +274,7 @@ export default function ContactDetailScreen() {
         contact={contact}
         onClose={() => setEditModalVisible(false)}
         onSaved={handleEditSaved}
+        onDeleted={handleDeleted}
       />
     </SafeAreaView>
   );
@@ -330,18 +336,24 @@ function ContactEditModal({
   contact,
   onClose,
   onSaved,
+  onDeleted,
 }: {
   visible: boolean;
   contact: IContact;
   onClose: () => void;
   onSaved: () => void;
+  onDeleted: () => void;
 }) {
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
   const [name, setName] = useState(contact.name);
   const [email, setEmail] = useState(contact.email || "");
   const [phone, setPhone] = useState(contact.phone || "");
   const [company, setCompany] = useState(contact.company || "");
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const canDelete = contact.transactionCount === 0;
 
   const handleSave = async () => {
     if (name.trim().length < 2) {
@@ -374,6 +386,22 @@ function ContactEditModal({
     email !== (contact.email || "") ||
     phone !== (contact.phone || "") ||
     company !== (contact.company || "");
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      const result = await FinanceService.deleteContact(contact.id);
+      if (result.success) {
+        showSuccess("Contact deleted");
+        onDeleted();
+      } else {
+        showError(result.error.message);
+      }
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
@@ -459,6 +487,66 @@ function ContactEditModal({
               />
             </View>
           </View>
+
+          {/* Delete Section */}
+          <View className="mt-6 pt-6 border-t border-gray-200">
+            {!canDelete && (
+              <View className="bg-amber-50 rounded-xl p-4 mb-4 flex-row items-start">
+                <Lucide name="alert-triangle" size={18} color={COLORS.warning} />
+                <Text className="text-sm text-amber-800 ml-2 flex-1">
+                  This contact has {contact.transactionCount} transaction{contact.transactionCount !== 1 ? "s" : ""}.
+                  You can only delete contacts with no transactions.
+                </Text>
+              </View>
+            )}
+
+            {showDeleteConfirm ? (
+              <View className="bg-red-50 rounded-xl p-4">
+                <Text className="text-sm text-red-800 mb-3">
+                  Are you sure you want to delete {contact.name}? This cannot be undone.
+                </Text>
+                <View className="flex-row gap-3">
+                  <Pressable
+                    onPress={() => setShowDeleteConfirm(false)}
+                    className="flex-1 py-3 rounded-xl bg-gray-200 items-center"
+                  >
+                    <Text className="text-sm font-semibold text-gray-700">Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleDelete}
+                    disabled={isDeleting}
+                    className="flex-1 py-3 rounded-xl bg-red-600 items-center"
+                  >
+                    {isDeleting ? (
+                      <ActivityIndicator size="small" color={COLORS.white} />
+                    ) : (
+                      <Text className="text-sm font-semibold text-white">Delete</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => setShowDeleteConfirm(true)}
+                disabled={!canDelete}
+                style={[
+                  styles.deleteButton,
+                  !canDelete && styles.deleteButtonDisabled,
+                ]}
+                className="py-4 rounded-xl items-center"
+              >
+                <Text
+                  className={`text-base font-semibold ${
+                    canDelete ? "text-red-600" : "text-gray-400"
+                  }`}
+                >
+                  Delete Contact
+                </Text>
+              </Pressable>
+            )}
+          </View>
+
+          <View className="h-8" />
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -502,5 +590,14 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray100,
     alignItems: "center",
     justifyContent: "center",
+  },
+  deleteButton: {
+    backgroundColor: `${COLORS.error}10`,
+    borderWidth: 1,
+    borderColor: `${COLORS.error}30`,
+  },
+  deleteButtonDisabled: {
+    backgroundColor: COLORS.gray100,
+    borderColor: COLORS.gray200,
   },
 });
