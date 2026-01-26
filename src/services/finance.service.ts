@@ -1020,11 +1020,14 @@ export class FinanceService {
     }>
   > {
     try {
-      // Get recent transactions for AI analysis
-      const transactions = getTransactionsRepo({ limit: 200 });
+      // Get ALL transactions for AI analysis (no limit - local SQLite is fast)
+      const transactions = getTransactionsRepo();
       const contacts = getAllContacts();
       const categories = getAllCategories();
       const projects = getAllProjects();
+
+      // Get existing recurring transactions to filter out duplicates
+      const existingRecurring = getAllRecurringTransactions();
 
       const result = await Parse.Cloud.run(
         CLOUD_FUNCTIONS.SUGGEST_RECURRING_TRANSACTIONS,
@@ -1042,6 +1045,15 @@ export class FinanceService {
             categoryName: t.categoryName,
             projectId: t.projectId,
             projectName: t.projectName,
+            description: t.description,
+          })),
+          // Send existing recurring so cloud function can filter duplicates
+          existingRecurring: existingRecurring.map((r) => ({
+            id: r.id,
+            name: r.name,
+            contactName: r.contactName,
+            amount: r.amount,
+            frequency: r.frequency,
           })),
           context: {
             contacts: contacts.map((c) => ({ id: c.id, name: c.name })),

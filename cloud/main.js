@@ -1407,25 +1407,16 @@ Parse.Cloud.define("parseTransactionInput", async (request) => {
     throw new Parse.Error(Parse.Error.INVALID_QUERY, "At least text or images are required");
   }
 
-  // Get user's existing data for context
-  const [contacts, categories, projects] = await Promise.all([
-    new Parse.Query("Contact").equalTo("user", user).include("project").find({ useMasterKey: true }),
-    new Parse.Query("Category").equalTo("user", user).find({ useMasterKey: true }),
-    new Parse.Query("Project").equalTo("user", user).find({ useMasterKey: true }),
-  ]);
+  // Get context from client (local-first: client sends SQLite data)
+  // Fall back to empty arrays if not provided (backward compatibility)
+  const { context } = request.params;
+  const contactListForAI = context?.contacts || [];
+  const categoryList = context?.categories || [];
+  const projectListForAI = context?.projects || [];
+  // For client response, use the same project list (client already has full data locally)
+  const projectListForClient = projectListForAI;
 
-  // Full contact list for AI context (includes aliases for matching)
-  const contactListForAI = contacts.map((c) => ({
-    id: c.id,
-    name: c.get("name"),
-    aliases: c.get("aliases") || [],
-    projectId: c.get("project")?.id,
-  }));
-  const categoryList = categories.map((c) => ({ id: c.id, name: c.get("name"), type: c.get("type") }));
-  // Project list for AI context (names for matching)
-  const projectListForAI = projects.map((p) => ({ id: p.id, name: p.get("name") }));
-  // Minimal project list for client response (with color for display, no redundant data)
-  const projectListForClient = projects.map((p) => ({ id: p.id, name: p.get("name"), color: p.get("color") }));
+  console.log(`[parseTransactionInput] Using client context: ${contactListForAI.length} contacts, ${categoryList.length} categories, ${projectListForAI.length} projects`);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -3014,47 +3005,27 @@ Parse.Cloud.define("createTransactionFromRecurring", async (request) => {
 /**
  * Suggest recurring transactions by analyzing transaction history
  * Uses AI to identify patterns in contacts, amounts, and dates
+ *
+ * NOTE: With local-first architecture, client sends all data - we don't query Parse
  */
 Parse.Cloud.define("suggestRecurringTransactions", async (request) => {
-  const user = requireUser(request);
+  requireUser(request);
 
-  // Fetch transactions from the last 6 months
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  // Get data from client (local-first: client sends SQLite data)
+  const { transactions: clientTransactions, existingRecurring, context } = request.params;
 
-  const transactionQuery = new Parse.Query("Transaction");
-  transactionQuery.equalTo("user", user);
-  transactionQuery.greaterThanOrEqualTo("date", sixMonthsAgo);
-  transactionQuery.descending("date");
-  transactionQuery.limit(500); // Get up to 500 transactions
-  transactionQuery.include(["category", "project", "contact"]);
+  // Use client-sent transactions (local SQLite data)
+  const txData = clientTransactions || [];
 
-  const transactions = await transactionQuery.find({ useMasterKey: true });
-
-  if (transactions.length < 3) {
+  if (txData.length < 3) {
     return { suggestions: [], message: "Not enough transaction history to analyze" };
   }
 
-  // Prepare transaction data for AI analysis
-  const txData = transactions.map((t) => ({
-    date: t.get("date").toISOString().split("T")[0],
-    amount: t.get("amount"),
-    currency: t.get("currency"),
-    type: t.get("type"),
-    contactName: t.get("contactName") || "Unknown",
-    categoryName: t.get("category")?.get("name") || null,
-    categoryId: t.get("category")?.id || null,
-    projectName: t.get("project")?.get("name") || null,
-    projectId: t.get("project")?.id || null,
-    description: t.get("description") || null,
-  }));
+  // Use client-sent existing recurring transactions for duplicate filtering
+  const existingNames = (existingRecurring || []).map((rt) => (rt.name || "").toLowerCase());
+  const existingContacts = (existingRecurring || []).map((rt) => (rt.contactName || "").toLowerCase());
 
-  // Fetch existing recurring transactions to avoid duplicates
-  const existingRtQuery = new Parse.Query("RecurringTransaction");
-  existingRtQuery.equalTo("user", user);
-  const existingRts = await existingRtQuery.find({ useMasterKey: true });
-  const existingNames = existingRts.map((rt) => rt.get("name").toLowerCase());
-  const existingContacts = existingRts.map((rt) => (rt.get("contactName") || "").toLowerCase());
+  console.log(`[suggestRecurringTransactions] Analyzing ${txData.length} transactions, ${existingNames.length} existing recurring`);
 
   const systemPrompt = `You are a financial analyst helping identify recurring transactions from transaction history.
 
@@ -3137,7 +3108,7 @@ Please analyze and suggest recurring transactions.`;
 
     return {
       suggestions: filteredSuggestions,
-      analyzed: transactions.length,
+      analyzed: txData.length,
     };
   } catch (error) {
     console.error("[suggestRecurringTransactions] Error:", error.message);
