@@ -93,12 +93,20 @@ export const getTransactions = (
 
   if (filters?.startDate) {
     whereClause += " AND t.date >= ?";
-    params.push(filters.startDate.toISOString().split("T")[0]);
+    // Handle both Date objects and ISO strings
+    const dateStr = filters.startDate instanceof Date
+      ? filters.startDate.toISOString().split("T")[0]
+      : String(filters.startDate).split("T")[0];
+    params.push(dateStr);
   }
 
   if (filters?.endDate) {
     whereClause += " AND t.date <= ?";
-    params.push(filters.endDate.toISOString().split("T")[0]);
+    // Handle both Date objects and ISO strings
+    const dateStr = filters.endDate instanceof Date
+      ? filters.endDate.toISOString().split("T")[0]
+      : String(filters.endDate).split("T")[0];
+    params.push(dateStr);
   }
 
   if (filters?.type) {

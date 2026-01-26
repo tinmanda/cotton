@@ -586,12 +586,21 @@ export class FinanceService {
         recentTransactions,
         projectSummaries: projectSummaries.map((p) => ({
           project: p,
+          // Also add id and name directly for dashboard compatibility
           id: p.id,
+          name: p.name,
           income: p.income,
           expenses: p.expenses,
           net: p.net,
         })),
-        topExpenseCategories,
+        topExpenseCategories: topExpenseCategories.map((c) => ({
+          category: c.category,
+          // Also add id and name directly for dashboard compatibility
+          id: c.category.id,
+          name: c.category.name,
+          amount: c.amount,
+          percentage: c.percentage,
+        })),
         monthlyTrend: [], // TODO: Calculate monthly trend
       };
 
