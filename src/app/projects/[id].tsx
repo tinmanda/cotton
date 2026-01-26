@@ -410,17 +410,17 @@ export default function ProjectDetailScreen() {
             <View style={styles.sectionCard} className="bg-white rounded-2xl overflow-hidden">
               {summary.topCategories.map((cat, index) => (
                 <View
-                  key={cat.id}
+                  key={cat.category.id}
                   className={`flex-row items-center justify-between px-4 py-3 ${
                     index < summary.topCategories.length - 1 ? "border-b border-gray-100" : ""
                   }`}
                 >
                   <View className="flex-row items-center flex-1">
                     <View
-                      style={[styles.categoryDot, { backgroundColor: cat.color }]}
+                      style={[styles.categoryDot, { backgroundColor: cat.category.color }]}
                     />
                     <Text className="text-sm text-gray-800 ml-2" numberOfLines={1}>
-                      {cat.name}
+                      {cat.category.name}
                     </Text>
                   </View>
                   <View className="flex-row items-center">
