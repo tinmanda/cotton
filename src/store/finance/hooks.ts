@@ -54,6 +54,9 @@ export function useContacts() {
           const freshContacts = getAllContacts();
           setContacts(freshContacts);
           return { success: true, data: freshContacts };
+        } catch (error) {
+          console.error("Error fetching contacts:", error);
+          return { success: false, error };
         } finally {
           setIsLoading(false);
         }
@@ -121,6 +124,9 @@ export function useCategories() {
           const freshCategories = getAllCategories();
           setCategories(freshCategories);
           return { success: true, data: freshCategories };
+        } catch (error) {
+          console.error("Error fetching categories:", error);
+          return { success: false, error };
         } finally {
           setIsLoading(false);
         }
@@ -187,6 +193,9 @@ export function useProjects() {
           const freshProjects = getAllProjects();
           setProjects(freshProjects);
           return { success: true, data: freshProjects };
+        } catch (error) {
+          console.error("Error fetching projects:", error);
+          return { success: false, error };
         } finally {
           setIsLoading(false);
         }

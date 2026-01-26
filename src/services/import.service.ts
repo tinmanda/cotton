@@ -10,7 +10,7 @@ interface ImportData {
   metadata: {
     version: string;
     exportDate: string;
-    exportedFrom: "parse-server";
+    exportedFrom: "parse-server" | "sqlite";
     schemaVersion: 1;
   };
   categories: ImportCategory[];
@@ -147,8 +147,8 @@ export class ImportService {
       const content = await file.text();
       const data: ImportData = JSON.parse(content);
 
-      // Validate the data structure
-      if (!data.metadata || data.metadata.exportedFrom !== "parse-server") {
+      // Validate the data structure (accept both parse-server and sqlite exports)
+      if (!data.metadata || !["parse-server", "sqlite"].includes(data.metadata.exportedFrom)) {
         return {
           success: false,
           error: new AppError(
@@ -423,8 +423,8 @@ export class ImportService {
       const content = await file.text();
       const data: ImportData = JSON.parse(content);
 
-      // Validate the data structure
-      if (!data.metadata || data.metadata.exportedFrom !== "parse-server") {
+      // Validate the data structure (accept both parse-server and sqlite exports)
+      if (!data.metadata || !["parse-server", "sqlite"].includes(data.metadata.exportedFrom)) {
         return {
           success: false,
           error: new AppError(

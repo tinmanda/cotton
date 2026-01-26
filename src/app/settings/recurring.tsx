@@ -129,6 +129,9 @@ export default function RecurringTransactionsScreen() {
       } else {
         showError(rtResult.error.message);
       }
+    } catch (error) {
+      console.error("Error loading recurring transactions:", error);
+      showError("Failed to load data. Please try again.");
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
