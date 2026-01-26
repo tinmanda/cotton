@@ -2,28 +2,22 @@ import { useEffect } from "react";
 import { View, Text } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useAuth } from "@/hooks/useAuth";
 import { ROUTES } from "@/constants";
 
 /**
- * Root screen - redirects based on auth state
+ * Root screen - redirects to dashboard (local-first, no auth needed)
  */
 export default function IndexScreen() {
   const router = useRouter();
-  const { isAuthenticated, user } = useAuth();
 
   useEffect(() => {
-    // Wait a bit for auth state to be hydrated from storage
+    // Local-first: no authentication needed, go directly to dashboard
     const timer = setTimeout(() => {
-      if (isAuthenticated && user) {
-        router.replace(ROUTES.DASHBOARD);
-      } else {
-        router.replace(ROUTES.AUTH);
-      }
-    }, 500);
+      router.replace(ROUTES.DASHBOARD);
+    }, 300);
 
     return () => clearTimeout(timer);
-  }, [isAuthenticated, user, router]);
+  }, [router]);
 
   return (
     <SafeAreaView className="flex-1 bg-white items-center justify-center">
