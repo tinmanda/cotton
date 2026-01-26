@@ -902,6 +902,26 @@ export class FinanceService {
   }
 
   /**
+   * Delete all recurring transactions (for debugging/reset)
+   */
+  static async clearAllRecurringTransactions(): Promise<
+    ApiResponse<{ success: boolean; deletedCount: number }>
+  > {
+    try {
+      const all = getAllRecurringTransactions();
+      let deletedCount = 0;
+      for (const rt of all) {
+        if (deleteRecurringRepo(rt.id)) {
+          deletedCount++;
+        }
+      }
+      return successResponse({ success: true, deletedCount });
+    } catch (error) {
+      return errorResponseFromUnknown(error);
+    }
+  }
+
+  /**
    * Create an actual transaction from a recurring transaction template
    */
   static async createTransactionFromRecurring(params: {

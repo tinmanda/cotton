@@ -20,6 +20,7 @@ export default function ProfileScreen() {
   const { showSuccess, showError } = useToast();
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isResettingRecurring, setIsResettingRecurring] = useState(false);
   const [flaggedCount, setFlaggedCount] = useState(0);
 
   // Fetch flagged count on focus
@@ -86,6 +87,24 @@ export default function ProfileScreen() {
       }
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const handleResetRecurring = async () => {
+    if (isResettingRecurring) return;
+
+    setIsResettingRecurring(true);
+    try {
+      const result = await FinanceService.clearAllRecurringTransactions();
+      if (result.success) {
+        showSuccess(`Cleared ${result.data.deletedCount} recurring transactions`);
+      } else {
+        showError(result.error.message);
+      }
+    } catch (error) {
+      showError("Failed to reset recurring transactions");
+    } finally {
+      setIsResettingRecurring(false);
     }
   };
 
@@ -160,6 +179,15 @@ export default function ProfileScreen() {
           onPress: handleImport,
           loading: isImporting,
           loadingText: "Importing...",
+        },
+        {
+          icon: "trash-2",
+          label: "Reset Recurring",
+          subtitle: "Clear all recurring transactions",
+          route: null,
+          onPress: handleResetRecurring,
+          loading: isResettingRecurring,
+          loadingText: "Resetting...",
         },
       ],
     },
