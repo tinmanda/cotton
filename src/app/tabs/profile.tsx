@@ -15,13 +15,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "expo-router";
 import { COLORS, ROUTES } from "@/constants";
 import { useToast } from "@/hooks/useToast";
-import { FinanceService } from "@/services";
+import { FinanceService, ExportService } from "@/services";
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
   const { showSuccess, showError } = useToast();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [flaggedCount, setFlaggedCount] = useState(0);
 
   // Fetch flagged count on focus
@@ -46,6 +47,26 @@ export default function ProfileScreen() {
     } else {
       showError(result.error.message);
       setIsSigningOut(false);
+    }
+  };
+
+  const handleExport = async () => {
+    if (isExporting) return;
+
+    setIsExporting(true);
+    try {
+      const result = await ExportService.exportAllData();
+      if (result.success) {
+        if (result.data.shared) {
+          showSuccess("Data exported successfully");
+        } else {
+          showSuccess(`Data saved to ${result.data.filePath}`);
+        }
+      } else {
+        showError(result.error.message);
+      }
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -111,6 +132,19 @@ export default function ProfileScreen() {
       ],
     },
     {
+      title: "Data",
+      items: [
+        {
+          icon: "download",
+          label: "Export Data",
+          subtitle: "Export all data for backup or migration",
+          route: null,
+          onPress: handleExport,
+          loading: isExporting,
+        },
+      ],
+    },
+    {
       title: "About",
       items: [
         {
@@ -168,7 +202,14 @@ export default function ProfileScreen() {
             {section.items.map((item, itemIndex) => (
               <Pressable
                 key={item.label}
-                onPress={() => item.route && router.push(item.route as any)}
+                onPress={() => {
+                  if ("onPress" in item && item.onPress) {
+                    item.onPress();
+                  } else if (item.route) {
+                    router.push(item.route as any);
+                  }
+                }}
+                disabled={"loading" in item && item.loading}
                 style={[
                   styles.menuItem,
                   "badge" in item && item.badge ? styles.menuItemHighlighted : null,
@@ -182,16 +223,20 @@ export default function ProfileScreen() {
                       "badge" in item && item.badge ? styles.iconContainerWarning : null,
                     ]}
                   >
-                    <Lucide
-                      name={item.icon as any}
-                      size={18}
-                      color={"badge" in item && item.badge ? "#F59E0B" : COLORS.primary}
-                    />
+                    {"loading" in item && item.loading ? (
+                      <ActivityIndicator size="small" color={COLORS.primary} />
+                    ) : (
+                      <Lucide
+                        name={item.icon as any}
+                        size={18}
+                        color={"badge" in item && item.badge ? "#F59E0B" : COLORS.primary}
+                      />
+                    )}
                   </View>
                   <View className="ml-3 flex-1">
                     <View className="flex-row items-center">
                       <Text className="text-[15px] font-semibold text-gray-900">
-                        {item.label}
+                        {"loading" in item && item.loading ? "Exporting..." : item.label}
                       </Text>
                       {"badge" in item && item.badge ? (
                         <View style={styles.badge} className="ml-2 px-2 py-0.5 rounded-full">
