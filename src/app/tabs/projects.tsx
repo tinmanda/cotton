@@ -252,7 +252,8 @@ export default function ProjectsScreen() {
         onClose={() => setModalVisible(false)}
         onSaved={(isEdit) => {
           setModalVisible(false);
-          loadProjects();
+          fetchProjects(true);
+          loadSummaries();
           showSuccess(isEdit ? "Project updated" : "Project created");
         }}
       />
